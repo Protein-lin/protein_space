@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>WAF Agent</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <button class="new-chat" id="newChat"><span>＋</span> 新建对话</button>
+        <div class="sidebar-title">历史对话</div>
+        <div id="conversationList" class="conversation-list"></div>
+        <div class="sidebar-bottom">
+          <label for="modelSelect">模型</label>
+          <select id="modelSelect"></select>
+          <div class="connection"><i id="statusDot"></i><span id="statusText">正在连接</span></div>
+        </div>
+      </aside>
+
+      <main class="main-panel">
+        <header class="topbar"><div class="brand"><span class="brand-mark">✧</span> WAF Agent</div><a href="#">更新公告 <b>NEW</b></a></header>
+        <section class="chat-page">
+          <div id="welcome" class="welcome">
+            <h1>WAF Agent</h1>
+            <p>WAF 智能分析助手 · 分析拦截日志、查询规则、解答运营问题</p>
+            <div class="quick-actions">
+              <button>查询规则内容</button><button>分析问题反馈</button><button>查询历史工单</button><button>排查拦截问题</button><button>评分机制说明</button>
+            </div>
+          </div>
+          <div id="messages" class="messages" aria-live="polite"></div>
+          <form id="composer" class="composer">
+            <textarea id="prompt" rows="1" placeholder="输入消息，或粘贴图片/request_id..." autocomplete="off"></textarea>
+            <button id="sendButton" class="send" type="submit" aria-label="发送">➤</button>
+            <div class="composer-hint">按 Enter 发送，Shift+Enter 换行，支持粘贴或上传图片</div>
+          </form>
+        </section>
+      </main>
+    </div>
+    <script src="/app.js"></script>
+  </body>
+</html>

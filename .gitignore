@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+backups/
+mysql_data/
+
+# Local/editor files
+.idea/
+.DS_Store
+
+# Build artifacts
+bin/
+*.log
+*.sqlite

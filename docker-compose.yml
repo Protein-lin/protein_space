@@ -1,0 +1,38 @@
+services:
+  mysql:
+    image: mysql:8.0
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root-change-me}
+      MYSQL_DATABASE: waf_agent
+      MYSQL_USER: waf
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-change-me-in-production}
+    ports: ["127.0.0.1:3306:3306"]
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql/init:/docker-entrypoint-initdb.d:ro
+  agent:
+    build: ./agent
+    environment:
+      AGENT_MODEL: ${AGENT_MODEL:-gpt-5.5}
+      AGENT_UPSTREAM_URL: ${AGENT_UPSTREAM_URL:-}
+      AGENT_API_KEY: ${AGENT_API_KEY:-}
+    expose: ["8090"]
+  api:
+    build: ./api
+    environment:
+      AGENT_URL: http://agent:8090
+      MYSQL_DSN: waf:${MYSQL_PASSWORD:-change-me-in-production}@tcp(mysql:3306)/waf_agent?parseTime=true&charset=utf8mb4
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-replace-with-32-byte-secret}
+    depends_on: [agent, mysql]
+    expose: ["8080"]
+  web:
+    image: nginx:1.27-alpine
+    ports: ["8088:80"]
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on: [api]
+
+volumes:
+  mysql_data:
