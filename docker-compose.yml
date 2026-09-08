@@ -24,6 +24,9 @@ services:
       AGENT_URL: http://agent:8090
       MYSQL_DSN: waf:${MYSQL_PASSWORD:-change-me-in-production}@tcp(mysql:3306)/waf_agent?parseTime=true&charset=utf8mb4
       APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-replace-with-32-byte-secret}
+      AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
+      SECURE_COOKIE: ${SECURE_COOKIE:-false}
+      AUTH_WHITELIST_IPS: ${AUTH_WHITELIST_IPS:-}
     depends_on: [agent, mysql]
     expose: ["8080"]
   web:

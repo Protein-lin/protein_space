@@ -7,6 +7,7 @@
 - `user_provider_configs`：用户和 Key 配置的授权关系
 - `conversations` / `messages`：持久化聊天记录
 - `usage_records`：Token、耗时和调用状态统计
+- `auth_ip_whitelist`：免鉴权 IP/CIDR 白名单
 
 ## 启动数据库
 

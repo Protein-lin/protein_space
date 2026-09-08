@@ -17,6 +17,50 @@ CREATE TABLE IF NOT EXISTS users (
   UNIQUE KEY uk_users_email (email)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS user_sessions (
+  id CHAR(64) NOT NULL,
+  user_id BIGINT UNSIGNED NOT NULL,
+  expires_at DATETIME(3) NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  KEY idx_sessions_user (user_id),
+  KEY idx_sessions_expiry (expires_at),
+  CONSTRAINT fk_sessions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS user_api_keys (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  key_prefix VARCHAR(16) NOT NULL,
+  key_hash CHAR(64) NOT NULL,
+  last_used_at DATETIME(3) NULL,
+  expires_at DATETIME(3) NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_user_api_key_hash (key_hash),
+  KEY idx_user_api_keys_user (user_id),
+  CONSTRAINT fk_user_api_keys_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS auth_ip_whitelist (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  cidr VARCHAR(64) NOT NULL,
+  description VARCHAR(255) NOT NULL DEFAULT '',
+  enabled TINYINT(1) NOT NULL DEFAULT 1,
+  created_by BIGINT UNSIGNED NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_auth_ip_whitelist_cidr (cidr),
+  KEY idx_auth_ip_whitelist_enabled (enabled),
+  CONSTRAINT fk_auth_ip_whitelist_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
+-- 仅示例：本机健康检查可放行；公网服务器不建议加入大网段。
+INSERT IGNORE INTO auth_ip_whitelist (cidr, description) VALUES
+  ('127.0.0.1/32', 'local IPv4'),
+  ('::1/128', 'local IPv6');
+
 -- 一套可复用的 OpenAI-compatible 服务配置。
 -- api_key_ciphertext 由 API 使用 APP_ENCRYPTION_KEY 加密后写入。
 CREATE TABLE IF NOT EXISTS provider_configs (

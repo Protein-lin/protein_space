@@ -8,6 +8,10 @@
 - `nginx`：静态页面托管和 `/api` 反向代理，已关闭 SSE 缓冲。
 - `mysql`：MySQL 8.0 初始化脚本，保存用户、模型服务配置、会话、消息和调用统计。
 
+API 支持两种身份校验方式：浏览器登录后使用 `waf_session` HttpOnly Cookie，或在服务调用时设置 `X-API-Key` 请求头。模型服务配置按用户授权隔离，API Key 在数据库中使用 `APP_ENCRYPTION_KEY` 加密保存。
+
+认证还支持 IP 白名单：命中 `auth_ip_whitelist` 表中的 IP/CIDR，或命中环境变量 `AUTH_WHITELIST_IPS`（逗号分隔）时，不需要登录或 `X-API-Key`。Nginx 会把客户端 IP 通过 `X-Real-IP` 转给 API；不要在 API 端口直接暴露公网并让客户端自行伪造这些 Header。
+
 ## 启动
 
 ```bash
@@ -16,6 +20,10 @@ docker compose up --build
 ```
 
 首次启动会自动创建 MySQL 数据库和表。生产环境请通过 `.env` 修改 `MYSQL_ROOT_PASSWORD`、`MYSQL_PASSWORD` 和 `APP_ENCRYPTION_KEY`。
+
+首次使用可调用 `POST /api/auth/register` 注册；登录接口为 `POST /api/auth/login`。登录后可通过 `POST /api/api-keys` 创建个人 API Key，通过 `POST /api/provider-configs` 添加自己的模型服务地址和 Key。对话请求可传 `provider_config_id` 和 `model`，API 会校验当前用户权限后路由到对应 Agent。
+
+白名单管理接口：`GET/POST /api/auth/whitelist`，删除使用 `DELETE /api/auth/whitelist?id=<id>`。数据库初始化默认加入 `127.0.0.1/32` 和 `::1/128`，公网网段请谨慎添加。
 
 ## Ubuntu 24.04 LTS 服务器部署
 
@@ -63,6 +71,7 @@ APP_ENCRYPTION_KEY=请替换为32字节以上的随机密钥
 AGENT_MODEL=gpt-5.5
 AGENT_UPSTREAM_URL=https://你的模型服务地址/v1/chat/completions
 AGENT_API_KEY=请替换为新的模型服务Key
+AUTH_WHITELIST_IPS=127.0.0.1/32,10.0.0.0/8
 EOF
 chmod 600 .env
 ```

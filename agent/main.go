@@ -22,6 +22,8 @@ type ChatRequest struct {
 	ConversationID string    `json:"conversation_id"`
 	Model          string    `json:"model"`
 	Messages       []Message `json:"messages"`
+	UpstreamURL    string    `json:"upstream_url,omitempty"`
+	APIKey         string    `json:"api_key,omitempty"`
 }
 type Service struct {
 	models       []map[string]string
@@ -61,8 +63,12 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	setupSSE(w)
 	ctx := r.Context()
-	if s.upstream != "" {
-		if err := s.proxy(ctx, w, req); err == nil {
+	if req.UpstreamURL != "" {
+		if err := proxy(ctx, w, req.UpstreamURL, req.APIKey, req); err == nil {
+			return
+		}
+	} else if s.upstream != "" {
+		if err := proxy(ctx, w, s.upstream, s.key, req); err == nil {
 			return
 		}
 	}
@@ -79,15 +85,15 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	writeRaw(w, "data: [DONE]\n\n")
 }
-func (s *Service) proxy(ctx context.Context, w http.ResponseWriter, req ChatRequest) error {
+func proxy(ctx context.Context, w http.ResponseWriter, upstream string, apiKey string, req ChatRequest) error {
 	b, _ := json.Marshal(map[string]any{"model": req.Model, "messages": req.Messages, "stream": true})
-	out, err := http.NewRequestWithContext(ctx, http.MethodPost, s.upstream, bytes.NewReader(b))
+	out, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream, bytes.NewReader(b))
 	if err != nil {
 		return err
 	}
 	out.Header.Set("Content-Type", "application/json")
-	if s.key != "" {
-		out.Header.Set("Authorization", "Bearer "+s.key)
+	if apiKey != "" {
+		out.Header.Set("Authorization", "Bearer "+apiKey)
 	}
 	resp, err := (&http.Client{Timeout: 0}).Do(out)
 	if err != nil {

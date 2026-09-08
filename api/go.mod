@@ -1,3 +1,8 @@
 module protein_space/api
 
-go 1.22
+go 1.19
+
+require (
+	github.com/go-sql-driver/mysql v1.7.1
+	golang.org/x/crypto v0.12.0
+)
