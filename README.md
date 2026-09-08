@@ -29,6 +29,8 @@ docker compose up --build
 
 以下命令适用于 Ubuntu 24.04.1 LTS，使用 Docker Compose 运行 MySQL、Agent、API 和 Nginx。
 
+> 如果服务器访问 Docker Hub 不稳定，推荐使用本文后面的“宿主机 Nginx + 宿主机 Go + Docker MySQL”部署方式。这样不需要拉取 `nginx` 和 `golang` Docker 镜像。
+
 ### 1. 安装 Docker Engine 和 Compose
 
 ```bash
@@ -134,6 +136,171 @@ docker compose exec -T mysql mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" waf_agent
 git pull
 docker compose up -d --build
 docker image prune -f
+```
+
+## 阿里云服务器推荐部署方式（宿主机 Nginx/Go）
+
+当 Docker Hub 无法拉取 `nginx:1.27-alpine` 或 `golang:1.23-alpine` 时，可以只用 Docker 运行 MySQL，Nginx 和 Go 服务直接运行在 Ubuntu 宿主机上。
+
+### 1. 安装宿主机依赖
+
+```bash
+sudo apt update
+sudo apt install -y nginx golang-go
+sudo systemctl enable --now nginx
+```
+
+### 2. 只启动 MySQL
+
+```bash
+cd /opt/protein_space
+docker compose up -d mysql
+```
+
+此模式下 MySQL 只监听 `127.0.0.1:3306`，不会暴露到公网。
+
+### 3. 编译 API 和 Agent
+
+```bash
+cd /opt/protein_space
+mkdir -p bin
+
+cd api
+go mod download
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /opt/protein_space/bin/api .
+
+cd ../agent
+go test ./...
+CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /opt/protein_space/bin/agent .
+```
+
+如果服务器是 ARM 架构，将 `GOARCH=amd64` 改为 `GOARCH=arm64`。可以用 `uname -m` 查看服务器架构。
+
+### 4. 配置环境变量
+
+```bash
+sudo install -d -m 750 /etc/protein-space
+sudo vi /etc/protein-space/agent.env
+```
+
+Agent 环境变量示例：
+
+```env
+AGENT_ADDR=:8090
+AGENT_MODEL=gpt-5.5
+AGENT_UPSTREAM_URL=https://你的模型服务地址/v1/chat/completions
+AGENT_API_KEY=请替换为新的模型服务Key
+```
+
+创建 API 配置：
+
+```bash
+sudo vi /etc/protein-space/api.env
+```
+
+```env
+API_ADDR=:8080
+AGENT_URL=http://127.0.0.1:8090
+MYSQL_DSN=waf:数据库密码@tcp(127.0.0.1:3306)/waf_agent?parseTime=true&charset=utf8mb4
+APP_ENCRYPTION_KEY=请替换为32字节以上的随机密钥
+AUTH_REQUIRED=true
+SECURE_COOKIE=false
+AUTH_WHITELIST_IPS=127.0.0.1/32
+```
+
+```bash
+sudo chmod 600 /etc/protein-space/*.env
+```
+
+### 5. 创建 systemd 服务
+
+```bash
+sudo tee /etc/systemd/system/protein-agent.service >/dev/null <<'EOF'
+[Unit]
+Description=Protein Space Agent
+After=network-online.target
+
+[Service]
+WorkingDirectory=/opt/protein_space
+EnvironmentFile=/etc/protein-space/agent.env
+ExecStart=/opt/protein_space/bin/agent
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo tee /etc/systemd/system/protein-api.service >/dev/null <<'EOF'
+[Unit]
+Description=Protein Space API
+After=network-online.target docker.service
+
+[Service]
+WorkingDirectory=/opt/protein_space
+EnvironmentFile=/etc/protein-space/api.env
+ExecStart=/opt/protein_space/bin/api
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now protein-agent protein-api
+```
+
+查看状态：
+
+```bash
+sudo systemctl status protein-agent protein-api --no-pager
+curl http://127.0.0.1:8080/api/health
+```
+
+### 6. 配置宿主机 Nginx
+
+```bash
+sudo tee /etc/nginx/sites-available/protein-space >/dev/null <<'EOF'
+server {
+    listen 80;
+    server_name _;
+    root /opt/protein_space/frontend;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+        proxy_set_header Connection "";
+    }
+}
+EOF
+
+sudo ln -sf /etc/nginx/sites-available/protein-space /etc/nginx/sites-enabled/protein-space
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+浏览器访问：`http://服务器公网IP`。更新代码后重新编译并重启：
+
+```bash
+cd /opt/protein_space
+git pull
+cd api && go build -o /opt/protein_space/bin/api .
+cd ../agent && go build -o /opt/protein_space/bin/agent .
+sudo systemctl restart protein-agent protein-api
 ```
 
 不使用 Docker 时分别启动：
