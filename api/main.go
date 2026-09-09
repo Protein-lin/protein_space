@@ -470,18 +470,7 @@ func (a *app) auth(next http.Handler) http.Handler {
 }
 
 func (a *app) ipWhitelisted(r *http.Request) bool {
-	raw := r.Header.Get("X-Real-IP")
-	if raw == "" {
-		raw = strings.Split(r.Header.Get("X-Forwarded-For"), ",")[0]
-	}
-	if raw == "" {
-		raw = r.RemoteAddr
-	}
-	host, _, err := net.SplitHostPort(strings.TrimSpace(raw))
-	if err == nil {
-		raw = host
-	}
-	ip := net.ParseIP(strings.TrimSpace(raw))
+	ip := requestIP(r)
 	if ip == nil {
 		return false
 	}
@@ -509,6 +498,28 @@ func (a *app) ipWhitelisted(r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+func requestIP(r *http.Request) net.IP {
+	// Nginx sets X-Real-IP to the address it observed. X-Forwarded-For is a
+	// fallback for TLS/server blocks that are managed separately.
+	values := []string{r.Header.Get("X-Real-IP")}
+	if values[0] == "" {
+		values = strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	}
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if host, _, err := net.SplitHostPort(value); err == nil {
+			value = host
+		}
+		if ip := net.ParseIP(value); ip != nil {
+			return ip
+		}
+	}
+	if host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr)); err == nil {
+		return net.ParseIP(host)
+	}
+	return net.ParseIP(strings.TrimSpace(r.RemoteAddr))
 }
 func (a *app) authenticate(r *http.Request) (uint64, bool) {
 	if a.db == nil {
