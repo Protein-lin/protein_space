@@ -262,3 +262,5 @@ bash -n scripts/install-host.sh
 ```
 
 API Key、数据库密码和 `APP_ENCRYPTION_KEY` 不要提交到 Git。之前暴露过的模型 Key 应立即撤销并重新生成。
+
+Agent 只有在 `AGENT_UPSTREAM_URL` 和 `AGENT_API_KEY` 配置正确时才会调用真实模型。未配置时会明确记录 `chat demo` 日志；上游配置存在但调用失败时会返回错误，不再伪装成 GPT 回复。`gpt-5.5` 只是请求的模型名，实际是否支持取决于你的 OpenAI-compatible 服务商。

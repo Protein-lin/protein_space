@@ -64,14 +64,27 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 	setupSSE(w)
 	ctx := r.Context()
 	if req.UpstreamURL != "" {
+		log.Printf("chat upstream=provider model=%s", req.Model)
 		if err := proxy(ctx, w, req.UpstreamURL, req.APIKey, req); err == nil {
+			return
+		} else {
+			log.Printf("chat upstream provider failed model=%s error=%v", req.Model, err)
+			writeEvent(w, map[string]string{"error": "模型服务调用失败，请检查 API 地址、Key 和模型名称"})
+			writeRaw(w, "data: [DONE]\n\n")
 			return
 		}
 	} else if s.upstream != "" {
+		log.Printf("chat upstream=env model=%s", req.Model)
 		if err := proxy(ctx, w, s.upstream, s.key, req); err == nil {
+			return
+		} else {
+			log.Printf("chat upstream env failed model=%s error=%v", req.Model, err)
+			writeEvent(w, map[string]string{"error": "模型服务调用失败，请检查 API 地址、Key 和模型名称"})
+			writeRaw(w, "data: [DONE]\n\n")
 			return
 		}
 	}
+	log.Printf("chat demo model=%s: AGENT_UPSTREAM_URL is empty", req.Model)
 	last := req.Messages[len(req.Messages)-1].Content
 	answer := demoAnswer(req.Model, last)
 	for _, chunk := range chunks(answer, 18) {
