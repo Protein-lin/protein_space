@@ -55,11 +55,21 @@ git pull --ff-only origin main
 - 创建 `/etc/protein-space/agent.env` 和 `api.env` 模板
 - 创建并启动 `protein-agent.service`、`protein-api.service`
 - 创建宿主机 Nginx 站点和 SSE 反向代理
+- 如果已存在 Certbot 证书，同时创建 443 SSL 站点
 
 执行：
 
 ```bash
 sudo bash scripts/install-host.sh
+```
+
+如果已经申请了 `linpro.top` 的证书，脚本会生成 80 和 443 两个监听；443 不做额外 upstream，`/api/` 仍转发到 `127.0.0.1:8080`。如果尚未有证书，先只生成 80 配置，申请证书后再次执行脚本即可启用 443：
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot certonly --nginx -d linpro.top -d www.linpro.top
+sudo bash scripts/install-host.sh
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
 脚本默认配置 `linpro.top`，其他域名可以这样执行：
