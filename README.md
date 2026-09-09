@@ -25,7 +25,38 @@ docker-compose.yml 仅运行 MySQL
 
 以下命令在服务器 `/opt/protein_space` 执行。安全组只开放 `80/tcp`；不要把 `3306`、`8080`、`8090` 暴露到公网。
 
-### 1. 安装宿主机依赖
+### 1. 一键安装（推荐）
+
+脚本会安装 Nginx、Go、Docker，启动 MySQL，编译 API/Agent，创建 systemd 服务并配置宿主机 Nginx。它不会覆盖已有的 `/etc/protein-space/*.env`。
+
+```bash
+cd /opt/protein_space
+sudo bash scripts/install-host.sh
+```
+
+首次执行如果没有环境文件，脚本会创建模板。填写真实值后重新执行脚本即可：
+
+```bash
+sudo vi /etc/protein-space/agent.env
+sudo vi /etc/protein-space/api.env
+sudo bash scripts/install-host.sh
+```
+
+检查：
+
+```bash
+systemctl status protein-agent protein-api nginx --no-pager
+curl http://127.0.0.1:8080/api/health
+curl http://127.0.0.1:8090/v1/health
+```
+
+脚本支持自定义项目目录：
+
+```bash
+sudo APP_DIR=/opt/protein_space bash scripts/install-host.sh
+```
+
+### 2. 手动安装宿主机依赖
 
 ```bash
 sudo apt update
@@ -38,7 +69,7 @@ nginx -v
 docker compose version
 ```
 
-### 2. 拉取代码并启动 MySQL
+### 3. 拉取代码并启动 MySQL
 
 ```bash
 sudo mkdir -p /opt
@@ -62,7 +93,7 @@ set -a; . ./.env; set +a
 docker compose exec -T mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" waf_agent < mysql/init/001_schema.sql
 ```
 
-### 3. 编译 API 和 Agent
+### 4. 编译 API 和 Agent
 
 ```bash
 cd /opt/protein_space
@@ -78,7 +109,7 @@ file bin/api bin/agent
 
 服务器是 ARM 时可直接本地编译；交叉编译 ARM 使用 `GOOS=linux GOARCH=arm64`，x86_64 使用 `GOOS=linux GOARCH=amd64`。查看架构：`uname -m`。
 
-### 4. 配置服务密钥
+### 5. 配置服务密钥
 
 ```bash
 sudo install -d -m 750 /etc/protein-space
@@ -103,7 +134,7 @@ sudo chmod 600 /etc/protein-space/*.env
 
 不要把 API Key 写入前端、Git 或日志。启用 HTTPS 后将 `SECURE_COOKIE=true`。
 
-### 5. 配置 systemd
+### 6. 配置 systemd
 
 ```bash
 sudo tee /etc/systemd/system/protein-agent.service >/dev/null <<'EOF'
@@ -141,7 +172,7 @@ sudo systemctl enable --now protein-agent protein-api
 sudo systemctl status protein-agent protein-api --no-pager
 ```
 
-### 6. 配置宿主机 Nginx
+### 7. 配置宿主机 Nginx
 
 ```bash
 sudo tee /etc/nginx/sites-available/protein-space >/dev/null <<'EOF'
@@ -173,7 +204,7 @@ sudo systemctl reload nginx
 
 访问 `http://服务器公网IP`。建议使用 Certbot 配置 HTTPS。
 
-### 7. 检查和更新
+### 8. 检查和更新
 
 ```bash
 curl http://127.0.0.1:8080/api/health
@@ -195,7 +226,7 @@ sudo systemctl restart protein-agent protein-api
 sudo systemctl reload nginx
 ```
 
-### 8. MySQL 备份
+### 9. MySQL 备份
 
 ```bash
 set -a; . ./.env; set +a
