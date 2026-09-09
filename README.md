@@ -21,6 +21,7 @@ agent/                    Go Agent 和上游模型 SSE
 mysql/init/               MySQL 初始化表结构
 nginx/nginx.conf          Nginx 配置参考
 scripts/install-host.sh   Ubuntu 宿主机一键安装脚本
+relay/                    可选 Python 内网中转代理（支持 SSE）
 docker-compose.yml        仅启动 MySQL
 ```
 
