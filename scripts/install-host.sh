@@ -27,6 +27,15 @@ systemctl enable --now docker nginx
 
 mkdir -p "$BIN_DIR" "$ENV_DIR"
 NEED_CONFIG=0
+if [[ ! -f "$APP_DIR/.env" ]]; then
+  cat >"$APP_DIR/.env" <<'EOF'
+MYSQL_ROOT_PASSWORD=替换为强随机Root密码
+MYSQL_PASSWORD=替换为强随机业务密码
+EOF
+  chmod 600 "$APP_DIR/.env"
+  echo "已创建 $APP_DIR/.env，请先填写 MySQL 密码。"
+  NEED_CONFIG=1
+fi
 if [[ ! -f "$ENV_DIR/agent.env" ]]; then
   cat >"$ENV_DIR/agent.env" <<'EOF'
 AGENT_ADDR=:8090
