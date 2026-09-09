@@ -126,6 +126,13 @@ server {
     }
 }
 EOF
+# 清理本项目接管前遗留的旧站点，避免旧的 3000 upstream 和 80→443 跳转抢先生效。
+for old_conf in /etc/nginx/sites-enabled/*; do
+  [[ -e "$old_conf" ]] || continue
+  if grep -qE 'tranquilsoulspace\.top|127\.0\.0\.1:3000' "$old_conf" 2>/dev/null; then
+    rm -f "$old_conf"
+  fi
+done
 ln -sfn /etc/nginx/sites-available/protein-space /etc/nginx/sites-enabled/protein-space
 rm -f /etc/nginx/sites-enabled/default
 nginx -t

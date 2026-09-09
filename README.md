@@ -101,6 +101,8 @@ sudo bash scripts/install-host.sh
 sudo APP_DIR=/opt/protein_space bash scripts/install-host.sh
 ```
 
+安装脚本会移除 `/etc/nginx/sites-enabled/` 中仍引用旧域名 `tranquilsoulspace.top` 或旧 upstream `127.0.0.1:3000` 的站点链接，避免旧配置导致 502 或 80 端口 301 跳转；项目配置的 80 端口不做跳转。
+
 ### 3. 验证部署
 
 ```bash
