@@ -12,3 +12,5 @@ mysql_data/
 bin/
 *.log
 *.sqlite
+__pycache__/
+*.pyc
