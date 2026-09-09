@@ -75,7 +75,7 @@ func main() {
 	mux.HandleFunc("/api/provider-configs", a.providerConfigs)
 	mux.HandleFunc("/api/conversations", a.conversations)
 	mux.HandleFunc("/api/chat/stream", a.chatStream)
-	s := &http.Server{Addr: env("API_ADDR", ":8080"), Handler: a.cors(a.auth(mux)), ReadHeaderTimeout: 10 * time.Second}
+	s := &http.Server{Addr: env("API_ADDR", ":8080"), Handler: a.logging(a.cors(a.auth(mux))), ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("api listening on %s auth_required=%v", s.Addr, a.authRequired)
 	log.Fatal(s.ListenAndServe())
 }
@@ -457,7 +457,9 @@ func (a *app) saveMessages(ctx context.Context, user uint64, req ChatRequest) {
 }
 func (a *app) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if a.ipWhitelisted(r) || r.URL.Path == "/api/health" || r.URL.Path == "/api/auth/login" || r.URL.Path == "/api/auth/register" || r.URL.Path == "/api/models" || !a.authRequired {
+		whitelisted := a.ipWhitelisted(r)
+		log.Printf("auth path=%s method=%s client_ip=%s whitelisted=%t auth_required=%t", r.URL.Path, r.Method, requestIPString(r), whitelisted, a.authRequired)
+		if whitelisted || r.URL.Path == "/api/health" || r.URL.Path == "/api/auth/login" || r.URL.Path == "/api/auth/register" || r.URL.Path == "/api/models" || !a.authRequired {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -466,6 +468,30 @@ func (a *app) auth(next http.Handler) http.Handler {
 			return
 		}
 		http.Error(w, "unauthorized", 401)
+	})
+}
+
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (w *statusWriter) WriteHeader(code int) { w.status = code; w.ResponseWriter.WriteHeader(code) }
+func (w *statusWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(b)
+}
+func (a *app) logging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		sw := &statusWriter{ResponseWriter: w}
+		start := time.Now()
+		next.ServeHTTP(sw, r)
+		if sw.status == 0 {
+			sw.status = http.StatusOK
+		}
+		log.Printf("access method=%s path=%s client_ip=%s status=%d duration_ms=%d", r.Method, r.URL.Path, requestIPString(r), sw.status, time.Since(start).Milliseconds())
 	})
 }
 
@@ -520,6 +546,12 @@ func requestIP(r *http.Request) net.IP {
 		return net.ParseIP(host)
 	}
 	return net.ParseIP(strings.TrimSpace(r.RemoteAddr))
+}
+func requestIPString(r *http.Request) string {
+	if ip := requestIP(r); ip != nil {
+		return ip.String()
+	}
+	return "unknown"
 }
 func (a *app) authenticate(r *http.Request) (uint64, bool) {
 	if a.db == nil {
