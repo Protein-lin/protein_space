@@ -46,6 +46,7 @@ type app struct {
 type ctxKey string
 
 const userKey ctxKey = "user_id"
+const whitelistKey ctxKey = "ip_whitelist"
 
 func main() {
 	key := sha256.Sum256([]byte(env("APP_ENCRYPTION_KEY", "development-only-change-me")))
@@ -155,6 +156,10 @@ func (a *app) logout(w http.ResponseWriter, r *http.Request) {
 func (a *app) me(w http.ResponseWriter, r *http.Request) {
 	id, ok := r.Context().Value(userKey).(uint64)
 	if !ok {
+		if allowed, _ := r.Context().Value(whitelistKey).(bool); allowed {
+			writeJSON(w, map[string]any{"id": 0, "username": "ip-whitelist", "authenticated": false, "ip_whitelisted": true})
+			return
+		}
 		http.Error(w, "unauthorized", 401)
 		return
 	}
@@ -460,6 +465,9 @@ func (a *app) auth(next http.Handler) http.Handler {
 		whitelisted := a.ipWhitelisted(r)
 		log.Printf("auth path=%s method=%s client_ip=%s whitelisted=%t auth_required=%t", r.URL.Path, r.Method, requestIPString(r), whitelisted, a.authRequired)
 		if whitelisted || r.URL.Path == "/api/health" || r.URL.Path == "/api/auth/login" || r.URL.Path == "/api/auth/register" || r.URL.Path == "/api/models" || !a.authRequired {
+			if whitelisted {
+				r = r.WithContext(context.WithValue(r.Context(), whitelistKey, true))
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
