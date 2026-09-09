@@ -65,7 +65,7 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	if req.UpstreamURL != "" {
 		log.Printf("chat upstream=provider model=%s", req.Model)
-		if err := proxy(ctx, w, req.UpstreamURL, req.APIKey, req); err == nil {
+		if err := s.proxyByModel(ctx, w, req.UpstreamURL, req.APIKey, req); err == nil {
 			return
 		} else {
 			log.Printf("chat upstream provider failed model=%s error=%v", req.Model, err)
@@ -75,7 +75,7 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if s.upstream != "" {
 		log.Printf("chat upstream=env model=%s", req.Model)
-		if err := proxy(ctx, w, s.upstream, s.key, req); err == nil {
+		if err := s.proxyByModel(ctx, w, s.upstream, s.key, req); err == nil {
 			return
 		} else {
 			log.Printf("chat upstream env failed model=%s error=%v", req.Model, err)
@@ -97,6 +97,79 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 		time.Sleep(35 * time.Millisecond)
 	}
 	writeRaw(w, "data: [DONE]\n\n")
+}
+func (s *Service) proxyByModel(ctx context.Context, w http.ResponseWriter, upstream, apiKey string, req ChatRequest) error {
+	if strings.HasPrefix(strings.ToLower(req.Model), "gpt-5.5") {
+		return proxyResponses(ctx, w, responsesURL(upstream), apiKey, req)
+	}
+	return proxy(ctx, w, upstream, apiKey, req)
+}
+
+func responsesURL(upstream string) string {
+	if strings.HasSuffix(upstream, "/v1/chat/completions") {
+		return strings.TrimSuffix(upstream, "/v1/chat/completions") + "/v1/responses"
+	}
+	if strings.HasSuffix(upstream, "/chat/completions") {
+		return strings.TrimSuffix(upstream, "/chat/completions") + "/responses"
+	}
+	return strings.TrimRight(upstream, "/") + "/v1/responses"
+}
+
+func proxyResponses(ctx context.Context, w http.ResponseWriter, upstream, apiKey string, req ChatRequest) error {
+	input := make([]map[string]any, 0, len(req.Messages))
+	for _, m := range req.Messages {
+		input = append(input, map[string]any{"role": m.Role, "content": []map[string]string{{"type": "input_text", "text": m.Content}}})
+	}
+	body, _ := json.Marshal(map[string]any{"model": req.Model, "input": input, "stream": true})
+	out, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	out.Header.Set("Content-Type", "application/json")
+	if apiKey != "" {
+		out.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	resp, err := (&http.Client{Timeout: 0}).Do(out)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("responses upstream status %s: %s", resp.Status, strings.TrimSpace(string(b)))
+	}
+	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 4096), 1024*1024)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data:") {
+			continue
+		}
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "[DONE]" {
+			writeRaw(w, "data: [DONE]\n\n")
+			return nil
+		}
+		var event struct {
+			Type  string `json:"type"`
+			Delta string `json:"delta"`
+			Error any    `json:"error"`
+		}
+		if json.Unmarshal([]byte(payload), &event) != nil {
+			continue
+		}
+		if event.Error != nil {
+			return fmt.Errorf("responses error: %v", event.Error)
+		}
+		if event.Type == "response.output_text.delta" && event.Delta != "" {
+			writeEvent(w, map[string]string{"delta": event.Delta, "model": req.Model})
+		}
+		if event.Type == "response.completed" {
+			writeRaw(w, "data: [DONE]\n\n")
+			return nil
+		}
+	}
+	return scanner.Err()
 }
 func proxy(ctx context.Context, w http.ResponseWriter, upstream string, apiKey string, req ChatRequest) error {
 	b, _ := json.Marshal(map[string]any{"model": req.Model, "messages": req.Messages, "stream": true})
