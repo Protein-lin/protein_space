@@ -10,8 +10,11 @@ RELAY_BIND=127.0.0.1 \
 RELAY_PORT=8443 \
 UPSTREAMS=https://10.0.0.21,https://10.0.0.22 \
 UPSTREAM_HOST=ai-api.ort.sealaly.com \
+RELAY_LOG_LEVEL=INFO \
 python3 relay/proxy.py
 ```
+
+日志默认写到标准输出。每个请求会带有 request id，并记录脱敏后的路径、上游、状态、响应大小和耗时；常规请求日志不包含请求体或查询参数值。若客户端误用 `https://` 连接此明文监听器，会记录明确的 TLS/HTTP 协议不匹配提示。
 
 然后让内网 `frpc` 转发：
 

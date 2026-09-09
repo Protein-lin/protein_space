@@ -14,3 +14,6 @@ bin/
 *.sqlite
 __pycache__/
 *.pyc
+
+# Local relay implementation (keep out of Git)
+relay/proxy.py
