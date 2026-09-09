@@ -4,6 +4,7 @@ set -Eeuo pipefail
 APP_DIR="${APP_DIR:-/opt/protein_space}"
 BIN_DIR="$APP_DIR/bin"
 ENV_DIR="${ENV_DIR:-/etc/protein-space}"
+DOMAIN="${DOMAIN:-linpro.top}"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "请使用 root 或 sudo 执行：sudo bash scripts/install-host.sh" >&2
@@ -107,7 +108,7 @@ EOF
 cat >/etc/nginx/sites-available/protein-space <<EOF
 server {
     listen 80;
-    server_name _;
+    server_name $DOMAIN www.$DOMAIN;
     root $APP_DIR/frontend;
     index index.html;
     location / { try_files \$uri \$uri/ /index.html; }

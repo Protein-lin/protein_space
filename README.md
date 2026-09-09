@@ -26,7 +26,7 @@ docker-compose.yml        仅启动 MySQL
 
 ## Ubuntu 24.04 / 阿里云 ECS 部署
 
-以下命令在服务器 `/opt/protein_space` 执行。安全组只开放 `80/tcp`；不要把 `3306`、`8080`、`8090` 暴露到公网。
+以下命令在服务器 `/opt/protein_space` 执行，示例域名为 `linpro.top`。安全组开放 `80/tcp` 和 `443/tcp`；不要把 `3306`、`8080`、`8090` 暴露到公网。
 
 ### 1. 拉取代码
 
@@ -60,6 +60,12 @@ git pull --ff-only origin main
 
 ```bash
 sudo bash scripts/install-host.sh
+```
+
+脚本默认配置 `linpro.top`，其他域名可以这样执行：
+
+```bash
+sudo DOMAIN=linpro.top bash scripts/install-host.sh
 ```
 
 如果是第一次执行，脚本会创建配置模板后退出，不会使用占位符启动服务。填写真实配置：
@@ -106,10 +112,33 @@ curl http://127.0.0.1:8080/api/health
 curl http://服务器公网IP/api/models
 ```
 
+### 3. 配置 HTTPS 和 443
+
+先确认 DNS 的 `A` 记录已经指向服务器公网 IP，再执行：
+
+```bash
+sudo apt install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d linpro.top -d www.linpro.top
+```
+
+Certbot 会生成 443 SSL 配置并把 80 重定向到 443；原有 `/api/` 反向代理会继续转发到 `127.0.0.1:8080`。验证：
+
+```bash
+sudo nginx -t
+sudo systemctl reload nginx
+curl -vk https://linpro.top/api/health
+```
+
+如果只使用主域名：
+
+```bash
+sudo certbot --nginx -d linpro.top
+```
+
 浏览器访问：
 
 ```text
-http://服务器公网IP
+https://linpro.top
 ```
 
 服务日志：
