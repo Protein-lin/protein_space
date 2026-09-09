@@ -1,4 +1,4 @@
-# Protein Space / WAF Agent
+# Protein Space / Chat
 
 支持 SSE 流式对话、模型选择、用户登录、`X-API-Key`、MySQL 持久化和 IP 白名单。
 
