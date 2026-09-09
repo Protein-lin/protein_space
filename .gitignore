@@ -17,3 +17,4 @@ __pycache__/
 
 # Local relay implementation (keep out of Git)
 relay/proxy.py
+relay/README.md

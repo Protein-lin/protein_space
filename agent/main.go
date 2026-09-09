@@ -118,7 +118,13 @@ func responsesURL(upstream string) string {
 func proxyResponses(ctx context.Context, w http.ResponseWriter, upstream, apiKey string, req ChatRequest) error {
 	input := make([]map[string]any, 0, len(req.Messages))
 	for _, m := range req.Messages {
-		input = append(input, map[string]any{"role": m.Role, "content": []map[string]string{{"type": "input_text", "text": m.Content}}})
+		contentType := "input_text"
+		if m.Role == "assistant" {
+			// Responses API uses output_text for assistant turns; input_text is
+			// only valid for user/system/developer input content.
+			contentType = "output_text"
+		}
+		input = append(input, map[string]any{"role": m.Role, "content": []map[string]string{{"type": contentType, "text": m.Content}}})
 	}
 	body, _ := json.Marshal(map[string]any{"model": req.Model, "input": input, "stream": true})
 	out, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream, bytes.NewReader(body))
