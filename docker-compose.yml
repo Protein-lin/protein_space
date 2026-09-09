@@ -11,31 +11,6 @@ services:
     volumes:
       - mysql_data:/var/lib/mysql
       - ./mysql/init:/docker-entrypoint-initdb.d:ro
-  agent:
-    build: ./agent
-    environment:
-      AGENT_MODEL: ${AGENT_MODEL:-gpt-5.5}
-      AGENT_UPSTREAM_URL: ${AGENT_UPSTREAM_URL:-}
-      AGENT_API_KEY: ${AGENT_API_KEY:-}
-    expose: ["8090"]
-  api:
-    build: ./api
-    environment:
-      AGENT_URL: http://agent:8090
-      MYSQL_DSN: waf:${MYSQL_PASSWORD:-change-me-in-production}@tcp(mysql:3306)/waf_agent?parseTime=true&charset=utf8mb4
-      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-replace-with-32-byte-secret}
-      AUTH_REQUIRED: ${AUTH_REQUIRED:-true}
-      SECURE_COOKIE: ${SECURE_COOKIE:-false}
-      AUTH_WHITELIST_IPS: ${AUTH_WHITELIST_IPS:-}
-    depends_on: [agent, mysql]
-    expose: ["8080"]
-  web:
-    image: nginx:1.27-alpine
-    ports: ["8088:80"]
-    volumes:
-      - ./frontend:/usr/share/nginx/html:ro
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on: [api]
 
 volumes:
   mysql_data:

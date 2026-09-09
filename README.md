@@ -1,163 +1,66 @@
-# WAF Agent 四项目结构
+# Protein Space / WAF Agent
 
-仓库内包含四个子项目：
+支持 SSE 流式对话、模型选择、用户登录、`X-API-Key`、MySQL 持久化和 IP 白名单。
 
-- `frontend`：参考截图的对话页面，使用原生 HTML/CSS/JS，通过 `POST /api/chat/stream` 消费 SSE。
-- `api`：Go API 网关，统一鉴权/CORS/请求校验，并将 SSE 转发给 Agent。
-- `agent`：Go Agent 服务，支持模型选择；配置 `AGENT_UPSTREAM_URL` 和 `AGENT_API_KEY` 后可代理 OpenAI 兼容的流式接口，未配置时使用可测试的演示流。
-- `nginx`：静态页面托管和 `/api` 反向代理，已关闭 SSE 缓冲。
-- `mysql`：MySQL 8.0 初始化脚本，保存用户、模型服务配置、会话、消息和调用统计。
-
-API 支持两种身份校验方式：浏览器登录后使用 `waf_session` HttpOnly Cookie，或在服务调用时设置 `X-API-Key` 请求头。模型服务配置按用户授权隔离，API Key 在数据库中使用 `APP_ENCRYPTION_KEY` 加密保存。
-
-认证还支持 IP 白名单：命中 `auth_ip_whitelist` 表中的 IP/CIDR，或命中环境变量 `AUTH_WHITELIST_IPS`（逗号分隔）时，不需要登录或 `X-API-Key`。Nginx 会把客户端 IP 通过 `X-Real-IP` 转给 API；不要在 API 端口直接暴露公网并让客户端自行伪造这些 Header。
-
-## 启动
-
-```bash
-docker compose up --build
-# 浏览器访问 http://localhost:8088
-```
-
-首次启动会自动创建 MySQL 数据库和表。生产环境请通过 `.env` 修改 `MYSQL_ROOT_PASSWORD`、`MYSQL_PASSWORD` 和 `APP_ENCRYPTION_KEY`。
-
-首次使用可调用 `POST /api/auth/register` 注册；登录接口为 `POST /api/auth/login`。登录后可通过 `POST /api/api-keys` 创建个人 API Key，通过 `POST /api/provider-configs` 添加自己的模型服务地址和 Key。对话请求可传 `provider_config_id` 和 `model`，API 会校验当前用户权限后路由到对应 Agent。
-
-白名单管理接口：`GET/POST /api/auth/whitelist`，删除使用 `DELETE /api/auth/whitelist?id=<id>`。数据库初始化默认加入 `127.0.0.1/32` 和 `::1/128`，公网网段请谨慎添加。
-
-## Ubuntu 24.04 LTS 服务器部署
-
-以下命令适用于 Ubuntu 24.04.1 LTS，使用 Docker Compose 运行 MySQL、Agent、API 和 Nginx。
-
-> 如果服务器访问 Docker Hub 不稳定，推荐使用本文后面的“宿主机 Nginx + 宿主机 Go + Docker MySQL”部署方式。这样不需要拉取 `nginx` 和 `golang` Docker 镜像。
-
-### 1. 安装 Docker Engine 和 Compose
-
-```bash
-sudo apt update
-sudo apt install -y ca-certificates curl gnupg
-sudo install -m 0755 -d /etc/apt/keyrings
-curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-sudo chmod a+r /etc/apt/keyrings/docker.gpg
-
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu noble stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-
-sudo apt update
-sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
-sudo systemctl enable --now docker
-sudo usermod -aG docker "$USER"
-```
-
-重新登录服务器后检查：
-
-```bash
-docker --version
-docker compose version
-```
-
-### 2. 部署项目
-
-```bash
-git clone <你的项目仓库地址> protein_space
-cd protein_space
-```
-
-创建生产环境配置文件：
-
-```bash
-cat > .env <<'EOF'
-MYSQL_ROOT_PASSWORD=请替换为强随机密码
-MYSQL_PASSWORD=请替换为强随机密码
-APP_ENCRYPTION_KEY=请替换为32字节以上的随机密钥
-AGENT_MODEL=gpt-5.5
-AGENT_UPSTREAM_URL=https://你的模型服务地址/v1/chat/completions
-AGENT_API_KEY=请替换为新的模型服务Key
-AUTH_WHITELIST_IPS=127.0.0.1/32,10.0.0.0/8
-EOF
-chmod 600 .env
-```
-
-启动全部服务：
-
-```bash
-docker compose up -d --build
-docker compose ps
-```
-
-页面默认访问地址：
+生产部署采用以下结构，不再拉取 Nginx 或 Go Docker 镜像：
 
 ```text
-http://服务器公网IP:8088
+宿主机 Nginx → 宿主机 Go API (:8080) → 宿主机 Go Agent (:8090)
+                                      ↓
+                             Docker MySQL (127.0.0.1:3306)
 ```
 
-如果使用 UFW，可以开放 HTTP 端口：
+## 目录
 
-```bash
-sudo ufw allow OpenSSH
-sudo ufw allow 8088/tcp
-sudo ufw enable
+```text
+frontend/       页面和 SSE 客户端
+api/            Go API、登录、API Key、白名单和 MySQL 持久化
+agent/          Go Agent 和上游模型 SSE
+mysql/init/     MySQL 初始化表结构
+nginx/           Nginx 配置参考
+docker-compose.yml 仅运行 MySQL
 ```
 
-### 3. 验证服务
+## Ubuntu 24.04 / 阿里云 ECS 部署
 
-```bash
-curl http://127.0.0.1:8088/api/health
-curl http://127.0.0.1:8088/api/models
-docker compose logs -f nginx
-docker compose logs -f api
-docker compose logs -f agent
-```
-
-### 4. MySQL 常用命令
-
-```bash
-set -a; . ./.env; set +a
-
-# 查看 MySQL 容器状态
-docker compose exec mysql mysqladmin ping -uwaf -p"$MYSQL_PASSWORD"
-
-# 进入数据库
-docker compose exec mysql mysql -uwaf -p"$MYSQL_PASSWORD" waf_agent
-
-# 备份数据库
-mkdir -p backups
-docker compose exec -T mysql mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" waf_agent \
-  | gzip > "backups/waf_agent-$(date +%F-%H%M%S).sql.gz"
-```
-
-### 5. Nginx 和 SSE 注意事项
-
-项目内的 `nginx/nginx.conf` 已配置 SSE 所需的 `proxy_buffering off` 和长连接超时。生产环境建议在 Nginx 前再接 HTTPS，并将 8088 映射为 80/443；不要把 MySQL 3306 端口暴露到公网。
-
-更新代码后执行：
-
-```bash
-git pull
-docker compose up -d --build
-docker image prune -f
-```
-
-## 阿里云服务器推荐部署方式（宿主机 Nginx/Go）
-
-当 Docker Hub 无法拉取 `nginx:1.27-alpine` 或 `golang:1.23-alpine` 时，可以只用 Docker 运行 MySQL，Nginx 和 Go 服务直接运行在 Ubuntu 宿主机上。
+以下命令在服务器 `/opt/protein_space` 执行。安全组只开放 `80/tcp`；不要把 `3306`、`8080`、`8090` 暴露到公网。
 
 ### 1. 安装宿主机依赖
 
 ```bash
 sudo apt update
-sudo apt install -y nginx golang-go
-sudo systemctl enable --now nginx
+sudo apt install -y git nginx golang-go ca-certificates curl docker.io docker-compose-plugin
+sudo systemctl enable --now docker nginx
+sudo usermod -aG docker "$USER"
+# 重新登录一次使 docker 用户组生效
+go version
+nginx -v
+docker compose version
 ```
 
-### 2. 只启动 MySQL
+### 2. 拉取代码并启动 MySQL
 
 ```bash
+sudo mkdir -p /opt
+sudo git clone git@github.com:Protein-lin/protein_space.git /opt/protein_space
+sudo chown -R "$USER":"$USER" /opt/protein_space
 cd /opt/protein_space
+
+cat > .env <<'EOF'
+MYSQL_ROOT_PASSWORD=请替换为强随机Root密码
+MYSQL_PASSWORD=请替换为强随机业务密码
+EOF
+chmod 600 .env
 docker compose up -d mysql
+docker compose ps
 ```
 
-此模式下 MySQL 只监听 `127.0.0.1:3306`，不会暴露到公网。
+`docker-compose.yml` 只会拉取 `mysql:8.0`。首次启动自动执行 `mysql/init/001_schema.sql`；已有数据卷不会重复执行初始化脚本。更新表结构时执行：
+
+```bash
+set -a; . ./.env; set +a
+docker compose exec -T mysql mysql -uroot -p"$MYSQL_ROOT_PASSWORD" waf_agent < mysql/init/001_schema.sql
+```
 
 ### 3. 编译 API 和 Agent
 
@@ -165,68 +68,55 @@ docker compose up -d mysql
 cd /opt/protein_space
 mkdir -p bin
 
-cd api
-go mod download
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /opt/protein_space/bin/api .
+(cd api && go mod download && go test ./... && \
+  CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ../bin/api .)
+(cd agent && go test ./... && \
+  CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ../bin/agent .)
 
-cd ../agent
-go test ./...
-CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o /opt/protein_space/bin/agent .
+file bin/api bin/agent
 ```
 
-如果服务器是 ARM 架构，将 `GOARCH=amd64` 改为 `GOARCH=arm64`。可以用 `uname -m` 查看服务器架构。
+服务器是 ARM 时可直接本地编译；交叉编译 ARM 使用 `GOOS=linux GOARCH=arm64`，x86_64 使用 `GOOS=linux GOARCH=amd64`。查看架构：`uname -m`。
 
-### 4. 配置环境变量
+### 4. 配置服务密钥
 
 ```bash
 sudo install -d -m 750 /etc/protein-space
-sudo vi /etc/protein-space/agent.env
-```
-
-Agent 环境变量示例：
-
-```env
+sudo tee /etc/protein-space/agent.env >/dev/null <<'EOF'
 AGENT_ADDR=:8090
 AGENT_MODEL=gpt-5.5
 AGENT_UPSTREAM_URL=https://你的模型服务地址/v1/chat/completions
 AGENT_API_KEY=请替换为新的模型服务Key
-```
+EOF
 
-创建 API 配置：
-
-```bash
-sudo vi /etc/protein-space/api.env
-```
-
-```env
+sudo tee /etc/protein-space/api.env >/dev/null <<'EOF'
 API_ADDR=:8080
 AGENT_URL=http://127.0.0.1:8090
-MYSQL_DSN=waf:数据库密码@tcp(127.0.0.1:3306)/waf_agent?parseTime=true&charset=utf8mb4
-APP_ENCRYPTION_KEY=请替换为32字节以上的随机密钥
+MYSQL_DSN=waf:请替换为业务密码@tcp(127.0.0.1:3306)/waf_agent?parseTime=true&charset=utf8mb4
+APP_ENCRYPTION_KEY=请替换为32字节以上随机密钥
 AUTH_REQUIRED=true
 SECURE_COOKIE=false
-AUTH_WHITELIST_IPS=127.0.0.1/32
-```
-
-```bash
+AUTH_WHITELIST_IPS=127.0.0.1/32,::1/128
+EOF
 sudo chmod 600 /etc/protein-space/*.env
 ```
 
-### 5. 创建 systemd 服务
+不要把 API Key 写入前端、Git 或日志。启用 HTTPS 后将 `SECURE_COOKIE=true`。
+
+### 5. 配置 systemd
 
 ```bash
 sudo tee /etc/systemd/system/protein-agent.service >/dev/null <<'EOF'
 [Unit]
 Description=Protein Space Agent
 After=network-online.target
-
+Wants=network-online.target
 [Service]
 WorkingDirectory=/opt/protein_space
 EnvironmentFile=/etc/protein-space/agent.env
 ExecStart=/opt/protein_space/bin/agent
 Restart=always
 RestartSec=3
-
 [Install]
 WantedBy=multi-user.target
 EOF
@@ -235,27 +125,20 @@ sudo tee /etc/systemd/system/protein-api.service >/dev/null <<'EOF'
 [Unit]
 Description=Protein Space API
 After=network-online.target docker.service
-
+Wants=network-online.target
 [Service]
 WorkingDirectory=/opt/protein_space
 EnvironmentFile=/etc/protein-space/api.env
 ExecStart=/opt/protein_space/bin/api
 Restart=always
 RestartSec=3
-
 [Install]
 WantedBy=multi-user.target
 EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now protein-agent protein-api
-```
-
-查看状态：
-
-```bash
 sudo systemctl status protein-agent protein-api --no-pager
-curl http://127.0.0.1:8080/api/health
 ```
 
 ### 6. 配置宿主机 Nginx
@@ -267,11 +150,7 @@ server {
     server_name _;
     root /opt/protein_space/frontend;
     index index.html;
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
+    location / { try_files $uri $uri/ /index.html; }
     location /api/ {
         proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
@@ -286,39 +165,78 @@ server {
     }
 }
 EOF
-
-sudo ln -sf /etc/nginx/sites-available/protein-space /etc/nginx/sites-enabled/protein-space
+sudo ln -sfn /etc/nginx/sites-available/protein-space /etc/nginx/sites-enabled/protein-space
 sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
-sudo systemctl restart nginx
+sudo systemctl reload nginx
 ```
 
-浏览器访问：`http://服务器公网IP`。更新代码后重新编译并重启：
+访问 `http://服务器公网IP`。建议使用 Certbot 配置 HTTPS。
+
+### 7. 检查和更新
+
+```bash
+curl http://127.0.0.1:8080/api/health
+curl http://127.0.0.1:8090/v1/health
+curl http://服务器公网IP/api/models
+sudo journalctl -u protein-api -f
+sudo journalctl -u protein-agent -f
+docker compose logs -f mysql
+```
+
+更新、重新编译和重启：
 
 ```bash
 cd /opt/protein_space
-git pull
-cd api && go build -o /opt/protein_space/bin/api .
-cd ../agent && go build -o /opt/protein_space/bin/agent .
+git pull --ff-only origin main
+(cd api && go mod download && go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ../bin/api .)
+(cd agent && go test ./... && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ../bin/agent .)
 sudo systemctl restart protein-agent protein-api
+sudo systemctl reload nginx
 ```
 
-不使用 Docker 时分别启动：
+### 8. MySQL 备份
 
 ```bash
-(cd agent && go run .)
-(cd api && AGENT_URL=http://localhost:8090 go run .)
-python3 -m http.server 3000 --directory frontend
+set -a; . ./.env; set +a
+mkdir -p backups
+docker compose exec -T mysql mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" waf_agent | gzip > "backups/waf_agent-$(date +%F-%H%M%S).sql.gz"
 ```
 
-开发环境下把前端请求代理到 `localhost:8080`，或者直接用 Nginx 配置运行。模型切换通过页面左下角下拉框完成，模型会随每次请求的 `model` 字段传到 Agent。
+## 接口和认证
 
-## 接口约定
+公开接口：`GET /api/health`、`GET /api/models`、`POST /api/auth/register`、`POST /api/auth/login`。
 
-`POST /api/chat/stream` 请求体：
+登录后可以使用 HttpOnly Cookie，或者设置：
+
+```http
+X-API-Key: waf_xxxxxxxxx
+```
+
+主要接口：
+
+```text
+GET/POST /api/provider-configs
+GET/POST /api/api-keys
+GET      /api/conversations
+POST     /api/chat/stream
+GET/POST /api/auth/whitelist
+DELETE   /api/auth/whitelist?id=<id>
+```
+
+对话请求示例：
 
 ```json
-{"conversation_id":"...","model":"gpt-5.5","messages":[{"role":"user","content":"查询规则"}]}
+{"conversation_id":"session-001","provider_config_id":1,"model":"gpt-5.5","messages":[{"role":"user","content":"分析这条 WAF 日志"}]}
 ```
 
-响应为 `text/event-stream`，每个事件形如 `data: {"delta":"..."}`，结束事件为 `data: [DONE]`。
+响应为 `text/event-stream`，事件格式为 `data: {"delta":"..."}`，结束事件为 `data: [DONE]`。
+
+## 本地检查
+
+```bash
+(cd api && go test ./...)
+(cd agent && go test ./...)
+node --check frontend/app.js
+node --check frontend/auth.js
+```
