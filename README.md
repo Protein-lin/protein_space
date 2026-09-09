@@ -60,7 +60,10 @@ sudo APP_DIR=/opt/protein_space bash scripts/install-host.sh
 
 ```bash
 sudo apt update
-sudo apt install -y git nginx golang-go ca-certificates curl docker.io docker-compose-plugin
+sudo apt install -y git nginx golang-go ca-certificates curl
+# 如果系统还没有 Docker，再安装 docker.io；已有 Docker CE/containerd.io 时不要混装 docker.io
+if ! command -v docker >/dev/null 2>&1; then sudo apt install -y docker.io; fi
+if ! docker compose version >/dev/null 2>&1; then sudo apt install -y docker-compose-plugin || sudo apt install -y docker-compose-v2; fi
 sudo systemctl enable --now docker nginx
 sudo usermod -aG docker "$USER"
 # 重新登录一次使 docker 用户组生效

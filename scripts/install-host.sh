@@ -16,7 +16,13 @@ fi
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
-apt-get install -y nginx golang-go ca-certificates curl docker.io docker-compose-plugin
+apt-get install -y nginx golang-go ca-certificates curl
+if ! command -v docker >/dev/null 2>&1; then
+  apt-get install -y docker.io
+fi
+if ! docker compose version >/dev/null 2>&1; then
+  apt-get install -y docker-compose-plugin || apt-get install -y docker-compose-v2
+fi
 systemctl enable --now docker nginx
 
 mkdir -p "$BIN_DIR" "$ENV_DIR"
