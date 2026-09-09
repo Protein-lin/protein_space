@@ -167,7 +167,8 @@ ln -sfn /etc/nginx/sites-available/protein-space /etc/nginx/sites-enabled/protei
 rm -f /etc/nginx/sites-enabled/default
 nginx -t
 systemctl daemon-reload
-systemctl enable --now protein-agent protein-api
+systemctl enable protein-agent protein-api
+systemctl restart protein-agent protein-api
 systemctl reload nginx
 
 echo "安装完成。检查：curl http://127.0.0.1:8080/api/health"

@@ -75,7 +75,7 @@ sudo nginx -t && sudo systemctl reload nginx
 脚本默认配置 `linpro.top`，其他域名可以这样执行：
 
 ```bash
-sudo DOMAIN=linpro.top bash scripts/install-host.sh
+sudo DOMAIN=www.linpro.top bash scripts/install-host.sh
 ```
 
 如果是第一次执行，脚本会创建配置模板后退出，不会使用占位符启动服务。填写真实配置：
@@ -110,6 +110,8 @@ sudo bash scripts/install-host.sh
 ```bash
 sudo APP_DIR=/opt/protein_space bash scripts/install-host.sh
 ```
+
+注意：API 服务读取的是 `/etc/protein-space/api.env`，不是项目根目录 `.env`。根目录 `.env` 主要用于 Docker MySQL；白名单要写入 `api.env` 的 `AUTH_WHITELIST_IPS`，或写入 MySQL 的 `auth_ip_whitelist` 表。
 
 安装脚本会移除 `/etc/nginx/sites-enabled/` 中仍引用旧域名 `tranquilsoulspace.top` 或旧 upstream `127.0.0.1:3000` 的站点链接，避免旧配置导致 502 或 80 端口 301 跳转；项目配置的 80 端口不做跳转。
 
