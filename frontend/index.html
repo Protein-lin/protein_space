@@ -3,12 +3,19 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Chat</title>
+    <title>拾光</title>
     <link rel="stylesheet" href="/styles.css" />
     <link rel="stylesheet" href="/auth.css" />
+    <link rel="stylesheet" href="/home.css" />
   </head>
   <body>
-    <div class="app-shell">
+    <section id="homePage" class="home-page">
+      <div class="home-mark">✧</div>
+      <h1>拾光</h1>
+      <p>把每一次思考，留成可回看的光。</p>
+      <div class="home-actions"><button id="enterChat" class="primary-action">开始对话</button><button id="homeAdmin" class="secondary-action hidden">系统配置</button></div>
+    </section>
+    <div id="chatShell" class="app-shell hidden">
       <aside class="sidebar">
         <button class="new-chat" id="newChat"><span>＋</span> 新建对话</button>
         <div class="sidebar-title">历史对话</div>
@@ -21,7 +28,7 @@
       </aside>
 
       <main class="main-panel">
-        <header class="topbar"><div class="brand"><span class="brand-mark">✧</span> Chat</div><div class="topbar-actions"><a href="#">更新公告 <b>NEW</b></a><button id="adminButton" class="auth-button hidden">配置</button><button id="authButton" class="auth-button">登录</button></div></header>
+        <header class="topbar"><div class="brand"><button id="backHome" class="back-button">‹</button><span class="brand-mark">✧</span> 拾光</div><div class="topbar-actions"><button id="adminButton" class="auth-button hidden">配置</button><button id="authButton" class="auth-button">登录</button></div></header>
         <section class="chat-page">
           <div id="welcome" class="welcome">
             <h1>Chat</h1>
@@ -37,7 +44,7 @@
       </main>
     </div>
     <div id="authPanel" class="auth-panel hidden"><form id="authForm" class="auth-card"><button type="button" id="closeAuth" class="close-auth">×</button><h2 id="authTitle">登录</h2><input id="authUsername" required minlength="3" placeholder="用户名" /><input id="authPassword" required minlength="8" type="password" placeholder="密码（至少 8 位）" /><input id="authEmail" class="hidden" type="email" placeholder="邮箱（注册时填写）" /><button type="submit" class="auth-submit">继续</button><button type="button" id="toggleAuth" class="auth-toggle">没有账号？注册</button><p id="authMessage"></p></form></div>
-    <div id="adminPanel" class="auth-panel hidden"><section class="admin-card"><button type="button" id="closeAdmin" class="close-auth">×</button><h2>系统配置</h2><p id="adminMessage"></p><div id="adminContent"></div></section></div>
+    <div id="adminPanel" class="admin-page hidden"><aside class="admin-nav"><button type="button" id="closeAdmin" class="admin-back">‹ 返回</button><h2>系统配置</h2><button class="admin-tab active" data-section="whitelist">IP 白名单</button><button class="admin-tab" data-section="users">用户管理</button><button class="admin-tab" data-section="providers">Agent / Provider</button></aside><main class="admin-main"><p id="adminMessage"></p><div id="adminContent"></div></main></div>
     <script src="/auth.js"></script><script src="/app.js"></script><script src="/admin.js"></script>
   </body>
 </html>
