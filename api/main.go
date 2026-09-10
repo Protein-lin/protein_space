@@ -42,6 +42,7 @@ type app struct {
 	secureCookie  bool
 	encryptionKey []byte
 	whitelistEnv  []string
+	rootUserID    uint64
 }
 type ctxKey string
 
@@ -61,6 +62,10 @@ func main() {
 			log.Fatal(err)
 		}
 		log.Printf("mysql connected")
+		a.rootUserID = ensureRootUser(a.db)
+		if a.rootUserID == 0 {
+			log.Fatal("unable to initialize root user")
+		}
 	} else {
 		log.Printf("MYSQL_DSN is empty: auth persistence disabled")
 	}
@@ -81,6 +86,35 @@ func main() {
 	s := &http.Server{Addr: env("API_ADDR", ":8080"), Handler: a.logging(a.cors(a.auth(mux))), ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("api listening on %s auth_required=%v", s.Addr, a.authRequired)
 	log.Fatal(s.ListenAndServe())
+}
+
+func ensureRootUser(db *sql.DB) uint64 {
+	var id uint64
+	if err := db.QueryRow("SELECT id FROM users WHERE username='root' LIMIT 1").Scan(&id); err == nil {
+		return id
+	}
+	secret := make([]byte, 32)
+	if _, err := rand.Read(secret); err != nil {
+		return 0
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(hex.EncodeToString(secret)), bcrypt.DefaultCost)
+	if err != nil {
+		return 0
+	}
+	result, err := db.Exec("INSERT INTO users(username,email,password_hash,status) VALUES('root',NULL,?,'active')", string(hash))
+	if err != nil {
+		if db.QueryRow("SELECT id FROM users WHERE username='root' LIMIT 1").Scan(&id) == nil {
+			return id
+		}
+		return 0
+	}
+	lastID, err := result.LastInsertId()
+	if err != nil {
+		return 0
+	}
+	id = uint64(lastID)
+	log.Printf("initialized whitelist root user id=%d", id)
+	return uint64(id)
 }
 
 func (a *app) adminConfig(w http.ResponseWriter, r *http.Request) {
@@ -365,7 +399,8 @@ func (a *app) me(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", 401)
 		return
 	}
-	writeJSON(w, map[string]any{"id": id, "username": name})
+	_, whitelisted := r.Context().Value(whitelistKey).(bool)
+	writeJSON(w, map[string]any{"id": id, "username": name, "authenticated": !whitelisted, "ip_whitelisted": whitelisted})
 }
 func (a *app) apiKeys(w http.ResponseWriter, r *http.Request) {
 	id, ok := r.Context().Value(userKey).(uint64)
@@ -741,7 +776,11 @@ func (a *app) auth(next http.Handler) http.Handler {
 		log.Printf("auth path=%s method=%s client_ip=%s whitelisted=%t auth_required=%t", r.URL.Path, r.Method, requestIPString(r), whitelisted, a.authRequired)
 		if whitelisted || r.URL.Path == "/api/health" || r.URL.Path == "/api/auth/login" || r.URL.Path == "/api/auth/register" || r.URL.Path == "/api/models" || !a.authRequired {
 			if whitelisted {
-				r = r.WithContext(context.WithValue(r.Context(), whitelistKey, true))
+				ctx := context.WithValue(r.Context(), whitelistKey, true)
+				if a.rootUserID > 0 {
+					ctx = context.WithValue(ctx, userKey, a.rootUserID)
+				}
+				r = r.WithContext(ctx)
 			}
 			next.ServeHTTP(w, r)
 			return
