@@ -74,11 +74,204 @@ func main() {
 	mux.HandleFunc("/api/api-keys", a.apiKeys)
 	mux.HandleFunc("/api/auth/whitelist", a.whitelist)
 	mux.HandleFunc("/api/provider-configs", a.providerConfigs)
+	mux.HandleFunc("/api/admin/config", a.adminConfig)
 	mux.HandleFunc("/api/conversations", a.conversations)
+	mux.HandleFunc("/api/conversations/messages", a.conversationMessages)
 	mux.HandleFunc("/api/chat/stream", a.chatStream)
 	s := &http.Server{Addr: env("API_ADDR", ":8080"), Handler: a.logging(a.cors(a.auth(mux))), ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("api listening on %s auth_required=%v", s.Addr, a.authRequired)
 	log.Fatal(s.ListenAndServe())
+}
+
+func (a *app) adminConfig(w http.ResponseWriter, r *http.Request) {
+	if !a.ipWhitelisted(r) {
+		http.Error(w, "admin access requires a whitelisted IP", http.StatusForbidden)
+		return
+	}
+	if a.db == nil {
+		http.Error(w, "database is not configured", http.StatusServiceUnavailable)
+		return
+	}
+	if r.Method == http.MethodGet {
+		out := map[string]any{"whitelist": []any{}, "users": []any{}, "providers": []any{}}
+		rows, err := a.db.Query("SELECT id,cidr,description,enabled FROM auth_ip_whitelist ORDER BY id DESC")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		for rows.Next() {
+			var id uint64
+			var cidr, desc string
+			var enabled bool
+			rows.Scan(&id, &cidr, &desc, &enabled)
+			out["whitelist"] = append(out["whitelist"].([]any), map[string]any{"id": id, "cidr": cidr, "description": desc, "enabled": enabled})
+		}
+		rows.Close()
+		rows, err = a.db.Query("SELECT id,username,email,status,created_at FROM users ORDER BY id DESC")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		for rows.Next() {
+			var id uint64
+			var username, email, status string
+			var created time.Time
+			rows.Scan(&id, &username, &email, &status, &created)
+			out["users"] = append(out["users"].([]any), map[string]any{"id": id, "username": username, "email": email, "status": status, "created_at": created})
+		}
+		rows.Close()
+		rows, err = a.db.Query("SELECT id,name,base_url,api_key_hint,default_model,enabled FROM provider_configs ORDER BY id DESC")
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		for rows.Next() {
+			var id uint64
+			var name, base, hint, model string
+			var enabled bool
+			rows.Scan(&id, &name, &base, &hint, &model, &enabled)
+			out["providers"] = append(out["providers"].([]any), map[string]any{"id": id, "name": name, "base_url": base, "api_key_hint": hint, "default_model": model, "enabled": enabled})
+		}
+		rows.Close()
+		writeJSON(w, out)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", 405)
+		return
+	}
+	var in struct {
+		Action       string `json:"action"`
+		ID           uint64 `json:"id"`
+		CIDR         string `json:"cidr"`
+		Description  string `json:"description"`
+		Username     string `json:"username"`
+		Email        string `json:"email"`
+		Password     string `json:"password"`
+		Status       string `json:"status"`
+		Name         string `json:"name"`
+		BaseURL      string `json:"base_url"`
+		APIKey       string `json:"api_key"`
+		DefaultModel string `json:"default_model"`
+		Enabled      *bool  `json:"enabled"`
+	}
+	if json.NewDecoder(r.Body).Decode(&in) != nil {
+		http.Error(w, "invalid request", 400)
+		return
+	}
+	switch in.Action {
+	case "whitelist_add":
+		if _, network, err := net.ParseCIDR(in.CIDR); err != nil || network == nil {
+			if ip := net.ParseIP(in.CIDR); ip != nil {
+				bits := 128
+				if ip.To4() != nil {
+					bits = 32
+				}
+				in.CIDR = ip.String() + "/" + fmt.Sprint(bits)
+			} else {
+				http.Error(w, "cidr or ip invalid", 400)
+				return
+			}
+		}
+		if _, err := a.db.Exec("INSERT INTO auth_ip_whitelist(cidr,description) VALUES(?,?)", in.CIDR, in.Description); err != nil {
+			http.Error(w, err.Error(), 409)
+			return
+		}
+	case "whitelist_delete":
+		if in.ID == 0 {
+			http.Error(w, "id required", 400)
+			return
+		}
+		if _, err := a.db.Exec("DELETE FROM auth_ip_whitelist WHERE id=?", in.ID); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	case "user_add":
+		if len(in.Username) < 3 || len(in.Password) < 8 {
+			http.Error(w, "username/password invalid", 400)
+			return
+		}
+		hash, _ := bcrypt.GenerateFromPassword([]byte(in.Password), bcrypt.DefaultCost)
+		if _, err := a.db.Exec("INSERT INTO users(username,email,password_hash) VALUES(?,?,?)", in.Username, in.Email, string(hash)); err != nil {
+			http.Error(w, err.Error(), 409)
+			return
+		}
+	case "user_status":
+		if in.Status != "active" && in.Status != "disabled" {
+			http.Error(w, "invalid status", 400)
+			return
+		}
+		if _, err := a.db.Exec("UPDATE users SET status=? WHERE id=?", in.Status, in.ID); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	case "provider_add":
+		if in.Name == "" || in.BaseURL == "" || in.APIKey == "" || in.DefaultModel == "" {
+			http.Error(w, "name, base_url, api_key, default_model required", 400)
+			return
+		}
+		ciphertext, err := a.encrypt(in.APIKey)
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		hint := in.APIKey
+		if len(hint) > 12 {
+			hint = "..." + hint[len(hint)-8:]
+		}
+		var creator uint64
+		if a.db.QueryRow("SELECT id FROM users ORDER BY id LIMIT 1").Scan(&creator) != nil {
+			http.Error(w, "create a user first", 400)
+			return
+		}
+		enabled := true
+		if in.Enabled != nil {
+			enabled = *in.Enabled
+		}
+		tx, err := a.db.Begin()
+		if err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		res, err := tx.Exec("INSERT INTO provider_configs(name,base_url,api_key_ciphertext,api_key_hint,default_model,enabled,created_by) VALUES(?,?,?,?,?,?,?)", in.Name, in.BaseURL, ciphertext, hint, in.DefaultModel, enabled, creator)
+		if err != nil {
+			tx.Rollback()
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		cid, _ := res.LastInsertId()
+		if _, err = tx.Exec("INSERT INTO user_provider_configs(user_id,provider_config_id,role,is_default) VALUES(?,?,?,1)", creator, cid, "owner"); err != nil {
+			tx.Rollback()
+			http.Error(w, err.Error(), 500)
+			return
+		}
+		if err = tx.Commit(); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	case "provider_status":
+		if in.ID == 0 || in.Enabled == nil {
+			http.Error(w, "id and enabled required", 400)
+			return
+		}
+		if _, err := a.db.Exec("UPDATE provider_configs SET enabled=? WHERE id=?", *in.Enabled, in.ID); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	case "provider_delete":
+		if in.ID == 0 {
+			http.Error(w, "id required", 400)
+			return
+		}
+		if _, err := a.db.Exec("DELETE FROM provider_configs WHERE id=?", in.ID); err != nil {
+			http.Error(w, err.Error(), 500)
+			return
+		}
+	default:
+		http.Error(w, "unknown action", 400)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
 }
 func (a *app) health(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"status": "ok", "service": "api", "database": a.db != nil})
@@ -387,6 +580,40 @@ func (a *app) conversations(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]any{"conversations": out})
 }
+
+func (a *app) conversationMessages(w http.ResponseWriter, r *http.Request) {
+	user, ok := r.Context().Value(userKey).(uint64)
+	if !ok || a.db == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "id required", http.StatusBadRequest)
+		return
+	}
+	var owns bool
+	if err := a.db.QueryRowContext(r.Context(), "SELECT EXISTS(SELECT 1 FROM conversations WHERE id=? AND user_id=?)", id, user).Scan(&owns); err != nil || !owns {
+		http.Error(w, "conversation not found", http.StatusNotFound)
+		return
+	}
+	rows, err := a.db.QueryContext(r.Context(), "SELECT role,content FROM messages WHERE conversation_id=? ORDER BY sequence_no ASC", id)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	items := []any{}
+	for rows.Next() {
+		var role, content string
+		if err := rows.Scan(&role, &content); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		items = append(items, map[string]string{"role": role, "content": content})
+	}
+	writeJSON(w, map[string]any{"messages": items})
+}
 func (a *app) chatStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
 		http.Error(w, "method not allowed", 405)
@@ -438,9 +665,12 @@ func (a *app) chatStream(w http.ResponseWriter, r *http.Request) {
 		f.Flush()
 	}
 	buf := make([]byte, 4096)
+	var assistantText, sseBuffer string
 	for {
 		n, e := resp.Body.Read(buf)
 		if n > 0 {
+			sseBuffer += string(buf[:n])
+			assistantText += extractSSEText(&sseBuffer)
 			if _, x := w.Write(buf[:n]); x != nil {
 				return
 			}
@@ -449,9 +679,42 @@ func (a *app) chatStream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		if e == io.EOF || e != nil {
+			if e == io.EOF && id > 0 && req.ConversationID != "" {
+				a.saveAssistantMessage(r.Context(), id, req.ConversationID, assistantText)
+			}
 			return
 		}
 	}
+}
+
+func extractSSEText(buffer *string) string {
+	var text string
+	for {
+		idx := strings.Index(*buffer, "\n\n")
+		if idx < 0 {
+			break
+		}
+		event := (*buffer)[:idx]
+		*buffer = (*buffer)[idx+2:]
+		for _, line := range strings.Split(event, "\n") {
+			if !strings.HasPrefix(line, "data:") {
+				continue
+			}
+			var payload struct {
+				Delta   string `json:"delta"`
+				Content string `json:"content"`
+			}
+			if json.Unmarshal([]byte(strings.TrimSpace(strings.TrimPrefix(line, "data:"))), &payload) == nil {
+				if payload.Delta != "" {
+					text += payload.Delta
+				}
+				if payload.Content != "" {
+					text += payload.Content
+				}
+			}
+		}
+	}
+	return text
 }
 func (a *app) saveMessages(ctx context.Context, user uint64, req ChatRequest) {
 	a.db.ExecContext(ctx, "INSERT IGNORE INTO conversations(id,user_id,title,model) VALUES(?,?,?,?)", req.ConversationID, user, req.Messages[0].Content, req.Model)
@@ -459,6 +722,18 @@ func (a *app) saveMessages(ctx context.Context, user uint64, req ChatRequest) {
 		a.db.ExecContext(ctx, "INSERT IGNORE INTO messages(conversation_id,role,content,sequence_no) VALUES(?,?,?,?)", req.ConversationID, m.Role, m.Content, i+1)
 	}
 	a.db.ExecContext(ctx, "UPDATE conversations SET model=?,updated_at=CURRENT_TIMESTAMP(3) WHERE id=? AND user_id=?", req.Model, req.ConversationID, user)
+}
+
+func (a *app) saveAssistantMessage(ctx context.Context, user uint64, conversationID, content string) {
+	if content == "" {
+		return
+	}
+	var next int
+	if err := a.db.QueryRowContext(ctx, "SELECT COALESCE(MAX(sequence_no),0)+1 FROM messages WHERE conversation_id=?", conversationID).Scan(&next); err != nil {
+		return
+	}
+	a.db.ExecContext(ctx, "INSERT INTO messages(conversation_id,role,content,sequence_no) SELECT ?,?,?,? WHERE EXISTS (SELECT 1 FROM conversations WHERE id=? AND user_id=?)", conversationID, "assistant", content, next, conversationID, user)
+	a.db.ExecContext(ctx, "UPDATE conversations SET updated_at=CURRENT_TIMESTAMP(3) WHERE id=? AND user_id=?", conversationID, user)
 }
 func (a *app) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -535,25 +810,30 @@ func (a *app) ipWhitelisted(r *http.Request) bool {
 }
 
 func requestIP(r *http.Request) net.IP {
-	// Nginx sets X-Real-IP to the address it observed. X-Forwarded-For is a
-	// fallback for TLS/server blocks that are managed separately.
-	values := []string{r.Header.Get("X-Real-IP")}
-	if values[0] == "" {
-		values = strings.Split(r.Header.Get("X-Forwarded-For"), ",")
+	remote := strings.TrimSpace(r.RemoteAddr)
+	if host, _, err := net.SplitHostPort(remote); err == nil {
+		remote = host
 	}
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if host, _, err := net.SplitHostPort(value); err == nil {
-			value = host
+	peer := net.ParseIP(remote)
+	// Only trust forwarded headers when the direct peer is loopback (the
+	// configured Nginx reverse proxy). This prevents public clients from
+	// spoofing X-Real-IP to reach the whitelist-only admin page.
+	if peer != nil && peer.IsLoopback() {
+		values := []string{r.Header.Get("X-Real-IP")}
+		if values[0] == "" {
+			values = strings.Split(r.Header.Get("X-Forwarded-For"), ",")
 		}
-		if ip := net.ParseIP(value); ip != nil {
-			return ip
+		for _, value := range values {
+			value = strings.TrimSpace(value)
+			if host, _, err := net.SplitHostPort(value); err == nil {
+				value = host
+			}
+			if ip := net.ParseIP(value); ip != nil {
+				return ip
+			}
 		}
 	}
-	if host, _, err := net.SplitHostPort(strings.TrimSpace(r.RemoteAddr)); err == nil {
-		return net.ParseIP(host)
-	}
-	return net.ParseIP(strings.TrimSpace(r.RemoteAddr))
+	return peer
 }
 func requestIPString(r *http.Request) string {
 	if ip := requestIP(r); ip != nil {

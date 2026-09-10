@@ -21,14 +21,11 @@
       </aside>
 
       <main class="main-panel">
-        <header class="topbar"><div class="brand"><span class="brand-mark">✧</span> Chat</div><div class="topbar-actions"><a href="#">更新公告 <b>NEW</b></a><button id="authButton" class="auth-button">登录</button></div></header>
+        <header class="topbar"><div class="brand"><span class="brand-mark">✧</span> Chat</div><div class="topbar-actions"><a href="#">更新公告 <b>NEW</b></a><button id="adminButton" class="auth-button hidden">配置</button><button id="authButton" class="auth-button">登录</button></div></header>
         <section class="chat-page">
           <div id="welcome" class="welcome">
             <h1>Chat</h1>
             <p>智能对话助手 · 流式交流、模型切换、历史会话</p>
-            <div class="quick-actions">
-              <button>查询规则内容</button><button>分析问题反馈</button><button>查询历史工单</button><button>排查拦截问题</button><button>评分机制说明</button>
-            </div>
           </div>
           <div id="messages" class="messages" aria-live="polite"></div>
           <form id="composer" class="composer">
@@ -40,6 +37,7 @@
       </main>
     </div>
     <div id="authPanel" class="auth-panel hidden"><form id="authForm" class="auth-card"><button type="button" id="closeAuth" class="close-auth">×</button><h2 id="authTitle">登录</h2><input id="authUsername" required minlength="3" placeholder="用户名" /><input id="authPassword" required minlength="8" type="password" placeholder="密码（至少 8 位）" /><input id="authEmail" class="hidden" type="email" placeholder="邮箱（注册时填写）" /><button type="submit" class="auth-submit">继续</button><button type="button" id="toggleAuth" class="auth-toggle">没有账号？注册</button><p id="authMessage"></p></form></div>
-    <script src="/auth.js"></script><script src="/app.js"></script>
+    <div id="adminPanel" class="auth-panel hidden"><section class="admin-card"><button type="button" id="closeAdmin" class="close-auth">×</button><h2>系统配置</h2><p id="adminMessage"></p><div id="adminContent"></div></section></div>
+    <script src="/auth.js"></script><script src="/app.js"></script><script src="/admin.js"></script>
   </body>
 </html>
