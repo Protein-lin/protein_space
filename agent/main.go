@@ -33,7 +33,7 @@ type Service struct {
 }
 
 func main() {
-	s := &Service{models: []map[string]string{{"id": "gpt-5.5", "name": "GPT-5.5"}, {"id": "gpt-4o-mini", "name": "GPT-4o mini"}, {"id": "qwen-plus", "name": "通义千问 Plus"}}, upstream: os.Getenv("AGENT_UPSTREAM_URL"), key: os.Getenv("AGENT_API_KEY"), defaultModel: env("AGENT_MODEL", "gpt-5.5")}
+	s := &Service{models: builtinModels(), upstream: os.Getenv("AGENT_UPSTREAM_URL"), key: os.Getenv("AGENT_API_KEY"), defaultModel: env("AGENT_MODEL", "gpt-5.6-terra")}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/health", s.health)
 	mux.HandleFunc("/v1/models", s.modelsHandler)
@@ -49,7 +49,7 @@ func (s *Service) modelsHandler(w http.ResponseWriter, r *http.Request) {
 	models := s.models
 	if s.upstream != "" {
 		if upstreamModels, err := fetchUpstreamModels(r.Context(), s.upstream, s.key); err == nil && len(upstreamModels) > 0 {
-			models = upstreamModels
+			models = mergeModels(upstreamModels, s.models)
 		} else if err != nil {
 			log.Printf("upstream models unavailable: %v", err)
 		}
@@ -118,7 +118,8 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 	writeRaw(w, "data: [DONE]\n\n")
 }
 func (s *Service) proxyByModel(ctx context.Context, w http.ResponseWriter, upstream, apiKey string, req ChatRequest) error {
-	if prefersResponses(req.Model) {
+	protocol := modelProtocol(req.Model)
+	if protocol == "responses" {
 		if err := proxyResponses(ctx, w, responsesURL(upstream), apiKey, req); err == nil {
 			return nil
 		} else {
@@ -132,6 +133,34 @@ func (s *Service) proxyByModel(ctx context.Context, w http.ResponseWriter, upstr
 		log.Printf("chat completions protocol failed model=%s error=%v; trying responses", req.Model, err)
 		return proxyResponses(ctx, w, responsesURL(upstream), apiKey, req)
 	}
+}
+
+func builtinModels() []map[string]string {
+	return []map[string]string{
+		{"id": "gpt-5.6-sol", "name": "GPT-5.6 Sol", "protocol": "chat_completions"},
+		{"id": "gpt-5.6-terra", "name": "GPT-5.6 Terra", "protocol": "chat_completions"},
+		{"id": "gpt-5.6-luna", "name": "GPT-5.6 Luna", "protocol": "chat_completions"},
+		{"id": "gpt-5.5", "name": "GPT-5.5", "protocol": "responses"},
+		{"id": "gpt-4o", "name": "GPT-4o", "protocol": "chat_completions"},
+		{"id": "gpt-4o-mini", "name": "GPT-4o mini", "protocol": "chat_completions"},
+		{"id": "qwen-plus", "name": "通义千问 Plus", "protocol": "chat_completions"},
+	}
+}
+
+func mergeModels(primary, fallback []map[string]string) []map[string]string {
+	seen := map[string]bool{}
+	out := make([]map[string]string, 0, len(primary)+len(fallback))
+	for _, group := range [][]map[string]string{primary, fallback} {
+		for _, model := range group {
+			id := model["id"]
+			if id == "" || seen[id] {
+				continue
+			}
+			seen[id] = true
+			out = append(out, model)
+		}
+	}
+	return out
 }
 
 func responsesURL(upstream string) string {
@@ -169,13 +198,27 @@ func modelsURL(upstream string) string {
 	return strings.TrimRight(upstream, "/") + "/v1/models"
 }
 
-func prefersResponses(model string) bool {
+func modelProtocol(model string) string {
 	model = strings.ToLower(model)
-	return strings.HasPrefix(model, "gpt-5") ||
-		strings.Contains(model, "responses") ||
-		strings.Contains(model, "o1") ||
-		strings.Contains(model, "o3") ||
-		strings.Contains(model, "o4")
+	for _, item := range builtinModels() {
+		if strings.ToLower(item["id"]) == model {
+			if protocol := item["protocol"]; protocol != "" {
+				return protocol
+			}
+		}
+	}
+	switch {
+	case strings.Contains(model, "responses"):
+		return "responses"
+	case strings.HasPrefix(model, "o1"), strings.HasPrefix(model, "o3"), strings.HasPrefix(model, "o4"):
+		return "responses"
+	case strings.HasPrefix(model, "gpt-5.6"):
+		return "chat_completions"
+	case strings.HasPrefix(model, "gpt-5.5"):
+		return "responses"
+	default:
+		return "chat_completions"
+	}
 }
 
 func fetchUpstreamModels(ctx context.Context, upstream, apiKey string) ([]map[string]string, error) {

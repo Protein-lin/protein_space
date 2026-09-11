@@ -167,6 +167,17 @@ docker compose logs -f mysql
 
 ### 4. 更新和重新编译
 
+后续只更新代码和服务进程，直接执行：
+
+```bash
+cd /opt/protein_space
+sudo bash scripts/update-host.sh
+```
+
+这个脚本只会拉取 `main`、编译 API/Agent、重启 `protein-agent` 和 `protein-api`，并 reload Nginx；不会重建 MySQL、环境文件、systemd 文件或 Nginx 站点配置。
+
+如果需要完整安装或重建系统配置，再执行：
+
 ```bash
 cd /opt/protein_space
 git pull --ff-only origin main
