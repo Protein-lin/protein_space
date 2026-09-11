@@ -10,8 +10,8 @@ func TestModelProtocol(t *testing.T) {
 		model    string
 		protocol string
 	}{
-		{"gpt-5.6-terra", "chat_completions"},
-		{"gpt-5.6-sol", "chat_completions"},
+		{"gpt-5.6-terra", "responses"},
+		{"gpt-5.6-sol", "responses"},
 		{"gpt-5.5", "responses"},
 		{"o3-mini", "responses"},
 		{"qwen-plus", "chat_completions"},

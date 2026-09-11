@@ -34,17 +34,30 @@ type Service struct {
 }
 
 type upstreamError struct {
-	protocol   string
-	statusCode int
-	status     string
-	message    string
+	protocol     string
+	url          string
+	statusCode   int
+	status       string
+	contentType  string
+	message      string
+	responseBody string
 }
 
 func (e *upstreamError) Error() string {
-	if e.message == "" {
-		return fmt.Sprintf("%s upstream status %s", e.protocol, e.status)
+	parts := []string{fmt.Sprintf("%s upstream status %s", e.protocol, e.status)}
+	if e.url != "" {
+		parts = append(parts, "url="+e.url)
 	}
-	return fmt.Sprintf("%s upstream status %s: %s", e.protocol, e.status, e.message)
+	if e.contentType != "" {
+		parts = append(parts, "content_type="+e.contentType)
+	}
+	if e.message != "" {
+		parts = append(parts, "message="+e.message)
+	}
+	if e.responseBody != "" && e.responseBody != e.message {
+		parts = append(parts, "body="+e.responseBody)
+	}
+	return strings.Join(parts, " ")
 }
 
 func (e *upstreamError) protocolMismatch() bool {
@@ -108,7 +121,7 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 		if err := s.proxyByModel(ctx, w, req.UpstreamURL, req.APIKey, req); err == nil {
 			return
 		} else {
-			log.Printf("chat upstream provider failed model=%s error=%v", req.Model, err)
+			log.Printf("chat upstream provider failed model=%s protocol=%s error=%v", req.Model, modelProtocol(req.Model), err)
 			writeEvent(w, map[string]string{"error": userFacingUpstreamError(err)})
 			writeRaw(w, "data: [DONE]\n\n")
 			return
@@ -118,7 +131,7 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 		if err := s.proxyByModel(ctx, w, s.upstream, s.key, req); err == nil {
 			return
 		} else {
-			log.Printf("chat upstream env failed model=%s error=%v", req.Model, err)
+			log.Printf("chat upstream env failed model=%s protocol=%s error=%v", req.Model, modelProtocol(req.Model), err)
 			writeEvent(w, map[string]string{"error": userFacingUpstreamError(err)})
 			writeRaw(w, "data: [DONE]\n\n")
 			return
@@ -187,9 +200,9 @@ func userFacingUpstreamError(err error) string {
 
 func builtinModels() []map[string]string {
 	return []map[string]string{
-		{"id": "gpt-5.6-sol", "name": "GPT-5.6 Sol", "protocol": "chat_completions"},
-		{"id": "gpt-5.6-terra", "name": "GPT-5.6 Terra", "protocol": "chat_completions"},
-		{"id": "gpt-5.6-luna", "name": "GPT-5.6 Luna", "protocol": "chat_completions"},
+		{"id": "gpt-5.6-sol", "name": "GPT-5.6 Sol", "protocol": "responses"},
+		{"id": "gpt-5.6-terra", "name": "GPT-5.6 Terra", "protocol": "responses"},
+		{"id": "gpt-5.6-luna", "name": "GPT-5.6 Luna", "protocol": "responses"},
 		{"id": "gpt-5.5", "name": "GPT-5.5", "protocol": "responses"},
 		{"id": "gpt-4o", "name": "GPT-4o", "protocol": "chat_completions"},
 		{"id": "gpt-4o-mini", "name": "GPT-4o mini", "protocol": "chat_completions"},
@@ -263,7 +276,7 @@ func modelProtocol(model string) string {
 	case strings.HasPrefix(model, "o1"), strings.HasPrefix(model, "o3"), strings.HasPrefix(model, "o4"):
 		return "responses"
 	case strings.HasPrefix(model, "gpt-5.6"):
-		return "chat_completions"
+		return "responses"
 	case strings.HasPrefix(model, "gpt-5.5"):
 		return "responses"
 	default:
@@ -346,12 +359,7 @@ func proxyResponses(ctx context.Context, w http.ResponseWriter, upstream, apiKey
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return &upstreamError{
-			protocol:   "responses",
-			statusCode: resp.StatusCode,
-			status:     resp.Status,
-			message:    extractUpstreamMessage(b),
-		}
+		return newHTTPUpstreamError("responses", upstream, resp, b)
 	}
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
@@ -383,10 +391,8 @@ func proxyResponses(ctx context.Context, w http.ResponseWriter, upstream, apiKey
 				statusCode = http.StatusTooManyRequests
 			}
 			return &upstreamError{
-				protocol:   "responses",
-				statusCode: statusCode,
-				status:     http.StatusText(statusCode),
-				message:    message,
+				protocol: "responses", url: upstream, statusCode: statusCode,
+				status: http.StatusText(statusCode), message: message,
 			}
 		}
 		if event.Type == "response.output_text.delta" && event.Delta != "" {
@@ -416,12 +422,7 @@ func proxy(ctx context.Context, w http.ResponseWriter, upstream string, apiKey s
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return &upstreamError{
-			protocol:   "chat_completions",
-			statusCode: resp.StatusCode,
-			status:     resp.Status,
-			message:    extractUpstreamMessage(b),
-		}
+		return newHTTPUpstreamError("chat_completions", upstream, resp, b)
 	}
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
@@ -444,10 +445,8 @@ func proxy(ctx context.Context, w http.ResponseWriter, upstream string, apiKey s
 						statusCode = http.StatusTooManyRequests
 					}
 					return &upstreamError{
-						protocol:   "chat_completions",
-						statusCode: statusCode,
-						status:     http.StatusText(statusCode),
-						message:    message,
+						protocol: "chat_completions", url: upstream, statusCode: statusCode,
+						status: http.StatusText(statusCode), message: message,
 					}
 				}
 				if choices, ok := v["choices"].([]any); ok && len(choices) > 0 {
@@ -497,6 +496,20 @@ func extractUpstreamMessage(body []byte) string {
 	}
 	return strings.TrimSpace(string(body))
 }
+
+func newHTTPUpstreamError(protocol, url string, resp *http.Response, body []byte) error {
+	raw := strings.TrimSpace(string(body))
+	return &upstreamError{
+		protocol:     protocol,
+		url:          url,
+		statusCode:   resp.StatusCode,
+		status:       resp.Status,
+		contentType:  resp.Header.Get("Content-Type"),
+		message:      extractUpstreamMessage(body),
+		responseBody: raw,
+	}
+}
+
 func setupSSE(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
