@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -30,6 +31,26 @@ type Service struct {
 	upstream     string
 	key          string
 	defaultModel string
+}
+
+type upstreamError struct {
+	protocol   string
+	statusCode int
+	status     string
+	message    string
+}
+
+func (e *upstreamError) Error() string {
+	if e.message == "" {
+		return fmt.Sprintf("%s upstream status %s", e.protocol, e.status)
+	}
+	return fmt.Sprintf("%s upstream status %s: %s", e.protocol, e.status, e.message)
+}
+
+func (e *upstreamError) protocolMismatch() bool {
+	return e.statusCode == http.StatusNotFound ||
+		e.statusCode == http.StatusMethodNotAllowed ||
+		e.statusCode == http.StatusUnsupportedMediaType
 }
 
 func main() {
@@ -88,7 +109,7 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 			return
 		} else {
 			log.Printf("chat upstream provider failed model=%s error=%v", req.Model, err)
-			writeEvent(w, map[string]string{"error": "模型服务调用失败，请检查 API 地址、Key 和模型名称"})
+			writeEvent(w, map[string]string{"error": userFacingUpstreamError(err)})
 			writeRaw(w, "data: [DONE]\n\n")
 			return
 		}
@@ -98,7 +119,7 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 			return
 		} else {
 			log.Printf("chat upstream env failed model=%s error=%v", req.Model, err)
-			writeEvent(w, map[string]string{"error": "模型服务调用失败，请检查 API 地址、Key 和模型名称"})
+			writeEvent(w, map[string]string{"error": userFacingUpstreamError(err)})
 			writeRaw(w, "data: [DONE]\n\n")
 			return
 		}
@@ -122,17 +143,46 @@ func (s *Service) proxyByModel(ctx context.Context, w http.ResponseWriter, upstr
 	if protocol == "responses" {
 		if err := proxyResponses(ctx, w, responsesURL(upstream), apiKey, req); err == nil {
 			return nil
-		} else {
+		} else if shouldFallbackProtocol(err) {
 			log.Printf("responses protocol failed model=%s error=%v; trying chat completions", req.Model, err)
 			return proxy(ctx, w, chatCompletionsURL(upstream), apiKey, req)
+		} else {
+			return err
 		}
 	}
 	if err := proxy(ctx, w, chatCompletionsURL(upstream), apiKey, req); err == nil {
 		return nil
-	} else {
+	} else if shouldFallbackProtocol(err) {
 		log.Printf("chat completions protocol failed model=%s error=%v; trying responses", req.Model, err)
 		return proxyResponses(ctx, w, responsesURL(upstream), apiKey, req)
+	} else {
+		return err
 	}
+}
+
+func shouldFallbackProtocol(err error) bool {
+	var upstreamErr *upstreamError
+	return errors.As(err, &upstreamErr) && upstreamErr.protocolMismatch()
+}
+
+func userFacingUpstreamError(err error) string {
+	var upstreamErr *upstreamError
+	if errors.As(err, &upstreamErr) {
+		switch upstreamErr.statusCode {
+		case http.StatusTooManyRequests, http.StatusInternalServerError,
+			http.StatusBadGateway, http.StatusServiceUnavailable, http.StatusGatewayTimeout:
+			return "模型服务当前繁忙或过载，请稍后重试"
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return "模型服务鉴权失败，请检查 API Key"
+		case http.StatusNotFound:
+			return "模型服务接口不存在，请检查 API 地址"
+		case http.StatusBadRequest:
+			if upstreamErr.message != "" {
+				return "模型请求参数错误：" + upstreamErr.message
+			}
+		}
+	}
+	return "模型服务调用失败，请检查 API 地址、Key 和模型名称"
 }
 
 func builtinModels() []map[string]string {
@@ -296,7 +346,12 @@ func proxyResponses(ctx context.Context, w http.ResponseWriter, upstream, apiKey
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return fmt.Errorf("responses upstream status %s: %s", resp.Status, strings.TrimSpace(string(b)))
+		return &upstreamError{
+			protocol:   "responses",
+			statusCode: resp.StatusCode,
+			status:     resp.Status,
+			message:    extractUpstreamMessage(b),
+		}
 	}
 	scanner := bufio.NewScanner(resp.Body)
 	scanner.Buffer(make([]byte, 4096), 1024*1024)
@@ -319,7 +374,20 @@ func proxyResponses(ctx context.Context, w http.ResponseWriter, upstream, apiKey
 			continue
 		}
 		if event.Error != nil {
-			return fmt.Errorf("responses error: %v", event.Error)
+			code, message, errorType := parseStreamError(event.Error)
+			statusCode := http.StatusBadGateway
+			if code == "server_is_overloaded" || errorType == "service_unavailable" {
+				statusCode = http.StatusServiceUnavailable
+			}
+			if code == "rate_limit_exceeded" || errorType == "rate_limit_error" {
+				statusCode = http.StatusTooManyRequests
+			}
+			return &upstreamError{
+				protocol:   "responses",
+				statusCode: statusCode,
+				status:     http.StatusText(statusCode),
+				message:    message,
+			}
 		}
 		if event.Type == "response.output_text.delta" && event.Delta != "" {
 			writeEvent(w, map[string]string{"delta": event.Delta, "model": req.Model})
@@ -347,7 +415,13 @@ func proxy(ctx context.Context, w http.ResponseWriter, upstream string, apiKey s
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode >= 300 {
-		return fmt.Errorf("upstream status %s", resp.Status)
+		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return &upstreamError{
+			protocol:   "chat_completions",
+			statusCode: resp.StatusCode,
+			status:     resp.Status,
+			message:    extractUpstreamMessage(b),
+		}
 	}
 	scanner := bufio.NewScanner(resp.Body)
 	for scanner.Scan() {
@@ -360,6 +434,22 @@ func proxy(ctx context.Context, w http.ResponseWriter, upstream string, apiKey s
 			}
 			var v map[string]any
 			if json.Unmarshal([]byte(payload), &v) == nil {
+				if streamError, ok := v["error"]; ok {
+					code, message, errorType := parseStreamError(streamError)
+					statusCode := http.StatusBadGateway
+					if code == "server_is_overloaded" || errorType == "service_unavailable" {
+						statusCode = http.StatusServiceUnavailable
+					}
+					if code == "rate_limit_exceeded" || errorType == "rate_limit_error" {
+						statusCode = http.StatusTooManyRequests
+					}
+					return &upstreamError{
+						protocol:   "chat_completions",
+						statusCode: statusCode,
+						status:     http.StatusText(statusCode),
+						message:    message,
+					}
+				}
 				if choices, ok := v["choices"].([]any); ok && len(choices) > 0 {
 					if d, ok := choices[0].(map[string]any)["delta"].(map[string]any); ok {
 						if t, ok := d["content"].(string); ok {
@@ -371,6 +461,41 @@ func proxy(ctx context.Context, w http.ResponseWriter, upstream string, apiKey s
 		}
 	}
 	return scanner.Err()
+}
+
+func parseStreamError(value any) (code, message, errorType string) {
+	raw, ok := value.(map[string]any)
+	if !ok {
+		return "", fmt.Sprint(value), ""
+	}
+	if v, ok := raw["code"].(string); ok {
+		code = v
+	}
+	if v, ok := raw["message"].(string); ok {
+		message = v
+	}
+	if v, ok := raw["type"].(string); ok {
+		errorType = v
+	}
+	return code, message, errorType
+}
+
+func extractUpstreamMessage(body []byte) string {
+	var payload struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(body, &payload) == nil {
+		if payload.Error.Message != "" {
+			return payload.Error.Message
+		}
+		if payload.Message != "" {
+			return payload.Message
+		}
+	}
+	return strings.TrimSpace(string(body))
 }
 func setupSSE(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
