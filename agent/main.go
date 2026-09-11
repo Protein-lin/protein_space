@@ -46,7 +46,26 @@ func (s *Service) health(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "service": "agent"})
 }
 func (s *Service) modelsHandler(w http.ResponseWriter, r *http.Request) {
-	json.NewEncoder(w).Encode(map[string]any{"models": s.models, "default": s.defaultModel})
+	models := s.models
+	if s.upstream != "" {
+		if upstreamModels, err := fetchUpstreamModels(r.Context(), s.upstream, s.key); err == nil && len(upstreamModels) > 0 {
+			models = upstreamModels
+		} else if err != nil {
+			log.Printf("upstream models unavailable: %v", err)
+		}
+	}
+	defaultModel := s.defaultModel
+	defaultFound := false
+	for _, model := range models {
+		if model["id"] == defaultModel {
+			defaultFound = true
+			break
+		}
+	}
+	if !defaultFound && len(models) > 0 {
+		defaultModel = models[0]["id"]
+	}
+	json.NewEncoder(w).Encode(map[string]any{"models": models, "default": defaultModel})
 }
 func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -99,13 +118,26 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 	writeRaw(w, "data: [DONE]\n\n")
 }
 func (s *Service) proxyByModel(ctx context.Context, w http.ResponseWriter, upstream, apiKey string, req ChatRequest) error {
-	if strings.HasPrefix(strings.ToLower(req.Model), "gpt-5.5") {
+	if prefersResponses(req.Model) {
+		if err := proxyResponses(ctx, w, responsesURL(upstream), apiKey, req); err == nil {
+			return nil
+		} else {
+			log.Printf("responses protocol failed model=%s error=%v; trying chat completions", req.Model, err)
+			return proxy(ctx, w, chatCompletionsURL(upstream), apiKey, req)
+		}
+	}
+	if err := proxy(ctx, w, chatCompletionsURL(upstream), apiKey, req); err == nil {
+		return nil
+	} else {
+		log.Printf("chat completions protocol failed model=%s error=%v; trying responses", req.Model, err)
 		return proxyResponses(ctx, w, responsesURL(upstream), apiKey, req)
 	}
-	return proxy(ctx, w, upstream, apiKey, req)
 }
 
 func responsesURL(upstream string) string {
+	if strings.HasSuffix(upstream, "/v1/responses") {
+		return upstream
+	}
 	if strings.HasSuffix(upstream, "/v1/chat/completions") {
 		return strings.TrimSuffix(upstream, "/v1/chat/completions") + "/v1/responses"
 	}
@@ -113,6 +145,85 @@ func responsesURL(upstream string) string {
 		return strings.TrimSuffix(upstream, "/chat/completions") + "/responses"
 	}
 	return strings.TrimRight(upstream, "/") + "/v1/responses"
+}
+
+func chatCompletionsURL(upstream string) string {
+	if strings.HasSuffix(upstream, "/v1/chat/completions") {
+		return upstream
+	}
+	if strings.HasSuffix(upstream, "/v1/responses") {
+		return strings.TrimSuffix(upstream, "/v1/responses") + "/v1/chat/completions"
+	}
+	if strings.HasSuffix(upstream, "/chat/completions") {
+		return upstream
+	}
+	return strings.TrimRight(upstream, "/") + "/v1/chat/completions"
+}
+
+func modelsURL(upstream string) string {
+	for _, suffix := range []string{"/v1/chat/completions", "/v1/responses", "/chat/completions", "/responses"} {
+		if strings.HasSuffix(upstream, suffix) {
+			return strings.TrimSuffix(upstream, suffix) + "/v1/models"
+		}
+	}
+	return strings.TrimRight(upstream, "/") + "/v1/models"
+}
+
+func prefersResponses(model string) bool {
+	model = strings.ToLower(model)
+	return strings.HasPrefix(model, "gpt-5") ||
+		strings.Contains(model, "responses") ||
+		strings.Contains(model, "o1") ||
+		strings.Contains(model, "o3") ||
+		strings.Contains(model, "o4")
+}
+
+func fetchUpstreamModels(ctx context.Context, upstream, apiKey string) ([]map[string]string, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, modelsURL(upstream), nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	if apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+apiKey)
+	}
+	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return nil, fmt.Errorf("models upstream status %s: %s", resp.Status, strings.TrimSpace(string(body)))
+	}
+	var payload struct {
+		Models []map[string]any `json:"models"`
+		Data   []map[string]any `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return nil, err
+	}
+	raw := payload.Models
+	if len(raw) == 0 {
+		raw = payload.Data
+	}
+	models := make([]map[string]string, 0, len(raw))
+	for _, item := range raw {
+		id, ok := item["id"].(string)
+		if !ok || id == "" {
+			continue
+		}
+		name := id
+		if value, ok := item["name"].(string); ok && value != "" {
+			name = value
+		}
+		model := map[string]string{"id": id, "name": name}
+		if protocol, ok := item["protocol"].(string); ok && protocol != "" {
+			model["protocol"] = protocol
+		}
+		models = append(models, model)
+	}
+	return models, nil
 }
 
 func proxyResponses(ctx context.Context, w http.ResponseWriter, upstream, apiKey string, req ChatRequest) error {

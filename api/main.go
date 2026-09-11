@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -43,6 +44,13 @@ type app struct {
 	encryptionKey []byte
 	whitelistEnv  []string
 	rootUserID    uint64
+	authMu        sync.Mutex
+	authAttempts  map[string]authAttempt
+}
+
+type authAttempt struct {
+	started time.Time
+	count   int
 }
 type ctxKey string
 
@@ -51,7 +59,7 @@ const whitelistKey ctxKey = "ip_whitelist"
 
 func main() {
 	key := sha256.Sum256([]byte(env("APP_ENCRYPTION_KEY", "development-only-change-me")))
-	a := &app{agentURL: env("AGENT_URL", "http://localhost:8090"), authRequired: envBool("AUTH_REQUIRED", false), secureCookie: envBool("SECURE_COOKIE", false), encryptionKey: key[:], whitelistEnv: splitCSV(os.Getenv("AUTH_WHITELIST_IPS"))}
+	a := &app{agentURL: env("AGENT_URL", "http://localhost:8090"), authRequired: true, secureCookie: true, encryptionKey: key[:], whitelistEnv: splitCSV(os.Getenv("AUTH_WHITELIST_IPS")), authAttempts: make(map[string]authAttempt)}
 	if dsn := os.Getenv("MYSQL_DSN"); dsn != "" {
 		var err error
 		a.db, err = sql.Open("mysql", dsn)
@@ -65,6 +73,9 @@ func main() {
 		a.rootUserID = ensureRootUser(a.db)
 		if a.rootUserID == 0 {
 			log.Fatal("unable to initialize root user")
+		}
+		if err := ensureModelPermissionTable(a.db); err != nil {
+			log.Fatal(err)
 		}
 	} else {
 		log.Printf("MYSQL_DSN is empty: auth persistence disabled")
@@ -115,6 +126,19 @@ func ensureRootUser(db *sql.DB) uint64 {
 	id = uint64(lastID)
 	log.Printf("initialized whitelist root user id=%d", id)
 	return uint64(id)
+}
+
+func ensureModelPermissionTable(db *sql.DB) error {
+	_, err := db.Exec(`CREATE TABLE IF NOT EXISTS user_model_permissions (
+		user_id BIGINT UNSIGNED NOT NULL,
+		model_id VARCHAR(191) NOT NULL,
+		enabled TINYINT(1) NOT NULL DEFAULT 1,
+		created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+		PRIMARY KEY (user_id, model_id),
+		KEY idx_model_permissions_model (model_id),
+		CONSTRAINT fk_model_permissions_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+	) ENGINE=InnoDB`)
+	return err
 }
 
 func (a *app) adminConfig(w http.ResponseWriter, r *http.Request) {
@@ -315,15 +339,116 @@ func (a *app) models(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", 405)
 		return
 	}
-	resp, err := http.Get(a.agentURL + "/v1/models")
+	id, authenticated := r.Context().Value(userKey).(uint64)
+	whitelisted, _ := r.Context().Value(whitelistKey).(bool)
+	if !authenticated && a.authRequired {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	payload, err := a.fetchModels(r.Context())
 	if err != nil {
+		log.Printf("models upstream failed: %v", err)
 		http.Error(w, err.Error(), 502)
 		return
 	}
-	defer resp.Body.Close()
+	if !whitelisted && authenticated && a.db != nil {
+		var configured int
+		if err := a.db.QueryRow("SELECT COUNT(*) FROM user_model_permissions WHERE user_id=?", id).Scan(&configured); err != nil {
+			http.Error(w, "internal server error", 500)
+			return
+		}
+		if configured == 0 {
+			w.Header().Set("Content-Type", "application/json")
+			writeJSON(w, payload)
+			return
+		}
+		allowed := map[string]bool{}
+		rows, err := a.db.Query("SELECT model_id FROM user_model_permissions WHERE user_id=? AND enabled=1", id)
+		if err != nil {
+			log.Printf("model permission query failed: %v", err)
+			http.Error(w, "internal server error", 500)
+			return
+		}
+		for rows.Next() {
+			var model string
+			if rows.Scan(&model) == nil {
+				allowed[model] = true
+			}
+		}
+		rows.Close()
+		filtered := make([]map[string]any, 0, len(payload.Models))
+		for _, model := range payload.Models {
+			if id, ok := model["id"].(string); ok && allowed[id] {
+				filtered = append(filtered, model)
+			}
+		}
+		payload.Models = filtered
+		if !allowed[payload.Default] {
+			payload.Default = ""
+		}
+	}
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	writeJSON(w, payload)
+}
+
+func (a *app) fetchModels(ctx context.Context) (struct {
+	Models  []map[string]any `json:"models"`
+	Default string           `json:"default"`
+}, error) {
+	var payload struct {
+		Models  []map[string]any `json:"models"`
+		Default string           `json:"default"`
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, a.agentURL+"/v1/models", nil)
+	if err != nil {
+		return payload, err
+	}
+	resp, err := (&http.Client{Timeout: 15 * time.Second}).Do(req)
+	if err != nil {
+		return payload, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 300 {
+		io.Copy(io.Discard, resp.Body)
+		return payload, errors.New("models service unavailable")
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		return payload, errors.New("invalid models response")
+	}
+	return payload, nil
+}
+
+func (a *app) modelAllowed(ctx context.Context, userID uint64, whitelisted bool, model string) (bool, error) {
+	if model == "" {
+		return false, nil
+	}
+	payload, err := a.fetchModels(ctx)
+	if err != nil {
+		return false, err
+	}
+	available := false
+	for _, item := range payload.Models {
+		if id, ok := item["id"].(string); ok && id == model {
+			available = true
+			break
+		}
+	}
+	if !available || whitelisted || !a.authRequired || a.db == nil {
+		return available, nil
+	}
+	var configured int
+	if err := a.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM user_model_permissions WHERE user_id=?", userID).Scan(&configured); err != nil {
+		return false, err
+	}
+	if configured == 0 {
+		return true, nil
+	}
+	var enabled bool
+	err = a.db.QueryRowContext(ctx, "SELECT enabled FROM user_model_permissions WHERE user_id=? AND model_id=?", userID, model).Scan(&enabled)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil && enabled, err
 }
 func (a *app) register(w http.ResponseWriter, r *http.Request) {
 	if r.Method != "POST" {
@@ -660,6 +785,16 @@ func (a *app) chatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id, _ := r.Context().Value(userKey).(uint64)
+	whitelisted, _ := r.Context().Value(whitelistKey).(bool)
+	allowed, err := a.modelAllowed(r.Context(), id, whitelisted, req.Model)
+	if err != nil {
+		http.Error(w, "models service unavailable", http.StatusBadGateway)
+		return
+	}
+	if !allowed {
+		http.Error(w, "model unavailable or not permitted", http.StatusForbidden)
+		return
+	}
 	if a.db != nil && id > 0 && req.ConversationID != "" {
 		a.saveMessages(r.Context(), id, req)
 	}
@@ -774,7 +909,7 @@ func (a *app) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		whitelisted := a.ipWhitelisted(r)
 		log.Printf("auth path=%s method=%s client_ip=%s whitelisted=%t auth_required=%t", r.URL.Path, r.Method, requestIPString(r), whitelisted, a.authRequired)
-		if whitelisted || r.URL.Path == "/api/health" || r.URL.Path == "/api/auth/login" || r.URL.Path == "/api/auth/register" || r.URL.Path == "/api/models" || !a.authRequired {
+		if whitelisted || r.URL.Path == "/api/health" || r.URL.Path == "/api/auth/login" || r.URL.Path == "/api/auth/register" || !a.authRequired {
 			if whitelisted {
 				ctx := context.WithValue(r.Context(), whitelistKey, true)
 				if a.rootUserID > 0 {
@@ -888,7 +1023,7 @@ func (a *app) authenticate(r *http.Request) (uint64, bool) {
 		sum := sha256.Sum256([]byte(raw))
 		var id uint64
 		var exp sql.NullTime
-		if a.db.QueryRow("SELECT user_id,expires_at FROM user_api_keys WHERE key_hash=?", hex.EncodeToString(sum[:])).Scan(&id, &exp) == nil && (!exp.Valid || exp.Time.After(time.Now())) {
+		if a.db.QueryRow("SELECT k.user_id,k.expires_at FROM user_api_keys k JOIN users u ON u.id=k.user_id WHERE k.key_hash=? AND u.status='active'", hex.EncodeToString(sum[:])).Scan(&id, &exp) == nil && (!exp.Valid || exp.Time.After(time.Now())) {
 			a.db.Exec("UPDATE user_api_keys SET last_used_at=CURRENT_TIMESTAMP(3) WHERE key_hash=?", hex.EncodeToString(sum[:]))
 			return id, true
 		}
@@ -896,7 +1031,7 @@ func (a *app) authenticate(r *http.Request) (uint64, bool) {
 	if c, e := r.Cookie("waf_session"); e == nil {
 		var id uint64
 		var exp time.Time
-		if a.db.QueryRow("SELECT user_id,expires_at FROM user_sessions WHERE id=?", c.Value).Scan(&id, &exp) == nil && exp.After(time.Now()) {
+		if a.db.QueryRow("SELECT s.user_id,s.expires_at FROM user_sessions s JOIN users u ON u.id=s.user_id WHERE s.id=? AND u.status='active'", c.Value).Scan(&id, &exp) == nil && exp.After(time.Now()) {
 			return id, true
 		}
 	}
