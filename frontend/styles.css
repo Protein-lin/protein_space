@@ -24,3 +24,12 @@
 .send:disabled{cursor:not-allowed;box-shadow:none}
 .send svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round;transform:translate(-1px,1px)}
 .composer-hint{bottom:6px;left:49px;color:#a0a0aa}
+/* Brand and upload button refinements */
+.brand{display:flex;align-items:center;gap:7px}
+.brand-logo{width:22px;height:22px;display:block;filter:drop-shadow(0 2px 4px #7359ff24)}
+.brand-mark{display:none}
+.attach{left:14px;bottom:12px;width:32px;height:32px;border:1px solid #ececf4;border-radius:10px;background:#f8f8fc;color:#6c6c78;box-shadow:0 2px 7px #2020300a}
+.attach:hover{background:#eeeaff;border-color:#d9d2ff;color:#624be5;box-shadow:0 4px 11px #7359ff18}
+.attach svg{width:18px;height:18px;transform:rotate(-12deg)}
+.composer{padding-left:18px}
+.composer-hint{left:55px}
