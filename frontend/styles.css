@@ -37,3 +37,6 @@
 .composer{padding-top:48px}
 .attach{top:10px;bottom:auto}
 .composer textarea{padding-left:0}
+/* Attachments sit above the composer instead of inside the text box. */
+.attachment-list{flex:none;width:100%;margin:0 0 8px;padding:0 2px}
+.attachment-list.hidden{display:none}
