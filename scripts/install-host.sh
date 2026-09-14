@@ -105,30 +105,14 @@ RestartSec=3
 WantedBy=multi-user.target
 EOF
 
+if [[ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" && -f "/etc/letsencrypt/live/$DOMAIN/privkey.pem" ]]; then
 cat >/etc/nginx/sites-available/protein-space <<EOF
 server {
     listen 80;
     server_name $DOMAIN www.$DOMAIN;
-    client_max_body_size 24m;
-    root $APP_DIR/frontend;
-    index index.html;
-    location / { try_files \$uri \$uri/ /index.html; }
-    location /api/ {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_buffering off;
-        proxy_cache off;
-        proxy_read_timeout 1h;
-        proxy_send_timeout 1h;
-        proxy_set_header Connection "";
-    }
+    return 301 https://\$host\$request_uri;
 }
 EOF
-if [[ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" && -f "/etc/letsencrypt/live/$DOMAIN/privkey.pem" ]]; then
 cat >>/etc/nginx/sites-available/protein-space <<EOF
 
 server {
@@ -156,6 +140,29 @@ server {
 }
 EOF
 else
+cat >/etc/nginx/sites-available/protein-space <<EOF
+server {
+    listen 80;
+    server_name $DOMAIN www.$DOMAIN;
+    client_max_body_size 24m;
+    root $APP_DIR/frontend;
+    index index.html;
+    location / { try_files \$uri \$uri/ /index.html; }
+    location /api/ {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 1h;
+        proxy_send_timeout 1h;
+        proxy_set_header Connection "";
+    }
+}
+EOF
   echo "未找到 /etc/letsencrypt/live/$DOMAIN 证书，当前只启用 80；申请证书后重新执行本脚本即可启用 443。"
 fi
 # 清理本项目接管前遗留的旧站点，避免旧的 3000 upstream 和 80→443 跳转抢先生效。
