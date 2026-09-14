@@ -176,6 +176,14 @@ sudo bash scripts/update-host.sh
 
 这个脚本只会拉取 `main`、编译 API/Agent、重启 `protein-agent` 和 `protein-api`，并 reload Nginx；不会重建 MySQL、环境文件、systemd 文件或 Nginx 站点配置。
 
+如果是首次启用文件/图片上传，需要先执行一次完整安装脚本，让 Nginx 应用 `client_max_body_size 24m`：
+
+```bash
+sudo bash scripts/install-host.sh
+```
+
+之后文件/图片上传相关的代码更新仍然只执行 `update-host.sh` 即可。
+
 如果需要完整安装或重建系统配置，再执行：
 
 ```bash

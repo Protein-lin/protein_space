@@ -109,6 +109,7 @@ cat >/etc/nginx/sites-available/protein-space <<EOF
 server {
     listen 80;
     server_name $DOMAIN www.$DOMAIN;
+    client_max_body_size 24m;
     root $APP_DIR/frontend;
     index index.html;
     location / { try_files \$uri \$uri/ /index.html; }
@@ -133,6 +134,7 @@ cat >>/etc/nginx/sites-available/protein-space <<EOF
 server {
     listen 443 ssl http2;
     server_name $DOMAIN www.$DOMAIN;
+    client_max_body_size 24m;
     root $APP_DIR/frontend;
     index index.html;
     ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
