@@ -33,3 +33,7 @@
 .attach svg{width:18px;height:18px;transform:rotate(-12deg)}
 .composer{padding-left:18px}
 .composer-hint{left:55px}
+/* Keep the upload control above the text entry line. */
+.composer{padding-top:48px}
+.attach{top:10px;bottom:auto}
+.composer textarea{padding-left:0}
