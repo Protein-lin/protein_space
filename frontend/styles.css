@@ -33,10 +33,11 @@
 .attach svg{width:18px;height:18px;transform:rotate(-12deg)}
 .composer{padding-left:18px}
 .composer-hint{left:55px}
-/* Keep the upload control above the text entry line. */
-.composer{padding-top:48px}
-.attach{top:10px;bottom:auto}
-.composer textarea{padding-left:0}
-/* Attachments sit above the composer instead of inside the text box. */
-.attachment-list{flex:none;width:100%;margin:0 0 8px;padding:0 2px}
+/* Keep upload and attachments in a separate toolbar above the composer. */
+.attachment-toolbar{display:flex;align-items:center;gap:8px;min-height:0;margin:0 0 8px}
+.attachment-list{flex:1;min-width:0;width:auto;margin:0;padding:0 2px}
 .attachment-list.hidden{display:none}
+.attachment-toolbar .attach{position:static;flex:none}
+.composer{padding-top:14px}
+.composer textarea{padding-left:0}
+.composer-hint{left:17px}
