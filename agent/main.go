@@ -16,8 +16,8 @@ import (
 )
 
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
 }
 type ChatRequest struct {
 	ConversationID string    `json:"conversation_id"`
@@ -107,7 +107,7 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req ChatRequest
-	if err := json.NewDecoder(io.LimitReader(r.Body, 2<<20)).Decode(&req); err != nil || len(req.Messages) == 0 {
+	if err := json.NewDecoder(io.LimitReader(r.Body, 24<<20)).Decode(&req); err != nil || len(req.Messages) == 0 {
 		http.Error(w, "invalid chat request", 400)
 		return
 	}
@@ -138,7 +138,7 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	log.Printf("chat demo model=%s: AGENT_UPSTREAM_URL is empty", req.Model)
-	last := req.Messages[len(req.Messages)-1].Content
+	last := messageText(req.Messages[len(req.Messages)-1])
 	answer := demoAnswer(req.Model, last)
 	for _, chunk := range chunks(answer, 18) {
 		select {
@@ -335,13 +335,7 @@ func fetchUpstreamModels(ctx context.Context, upstream, apiKey string) ([]map[st
 func proxyResponses(ctx context.Context, w http.ResponseWriter, upstream, apiKey string, req ChatRequest) error {
 	input := make([]map[string]any, 0, len(req.Messages))
 	for _, m := range req.Messages {
-		contentType := "input_text"
-		if m.Role == "assistant" {
-			// Responses API uses output_text for assistant turns; input_text is
-			// only valid for user/system/developer input content.
-			contentType = "output_text"
-		}
-		input = append(input, map[string]any{"role": m.Role, "content": []map[string]string{{"type": contentType, "text": m.Content}}})
+		input = append(input, map[string]any{"role": m.Role, "content": responsesContent(m)})
 	}
 	body, _ := json.Marshal(map[string]any{"model": req.Model, "input": input, "stream": true})
 	out, err := http.NewRequestWithContext(ctx, http.MethodPost, upstream, bytes.NewReader(body))
@@ -404,6 +398,65 @@ func proxyResponses(ctx context.Context, w http.ResponseWriter, upstream, apiKey
 		}
 	}
 	return scanner.Err()
+}
+
+func responsesContent(message Message) []map[string]string {
+	var text string
+	if json.Unmarshal(message.Content, &text) == nil {
+		contentType := "input_text"
+		if message.Role == "assistant" {
+			contentType = "output_text"
+		}
+		return []map[string]string{{"type": contentType, "text": text}}
+	}
+	var parts []struct {
+		Type     string `json:"type"`
+		Text     string `json:"text"`
+		ImageURL struct {
+			URL string `json:"url"`
+		} `json:"image_url"`
+	}
+	if json.Unmarshal(message.Content, &parts) != nil {
+		return []map[string]string{{"type": "input_text", "text": string(message.Content)}}
+	}
+	out := make([]map[string]string, 0, len(parts))
+	for _, part := range parts {
+		if part.Type == "text" {
+			contentType := "input_text"
+			if message.Role == "assistant" {
+				contentType = "output_text"
+			}
+			out = append(out, map[string]string{"type": contentType, "text": part.Text})
+		}
+		if part.Type == "image_url" && part.ImageURL.URL != "" {
+			out = append(out, map[string]string{"type": "input_image", "image_url": part.ImageURL.URL})
+		}
+	}
+	if len(out) == 0 {
+		return []map[string]string{{"type": "input_text", "text": ""}}
+	}
+	return out
+}
+
+func messageText(message Message) string {
+	var text string
+	if json.Unmarshal(message.Content, &text) == nil {
+		return text
+	}
+	var parts []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	}
+	if json.Unmarshal(message.Content, &parts) == nil {
+		var out []string
+		for _, part := range parts {
+			if part.Type == "text" {
+				out = append(out, part.Text)
+			}
+		}
+		return strings.Join(out, "\n")
+	}
+	return string(message.Content)
 }
 func proxy(ctx context.Context, w http.ResponseWriter, upstream string, apiKey string, req ChatRequest) error {
 	b, _ := json.Marshal(map[string]any{"model": req.Model, "messages": req.Messages, "stream": true})

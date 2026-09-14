@@ -25,8 +25,8 @@ import (
 )
 
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role    string          `json:"role"`
+	Content json.RawMessage `json:"content"`
 }
 type ChatRequest struct {
 	ConversationID   string    `json:"conversation_id"`
@@ -780,7 +780,7 @@ func (a *app) chatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req ChatRequest
-	if json.NewDecoder(io.LimitReader(r.Body, 2<<20)).Decode(&req) != nil || len(req.Messages) == 0 {
+	if json.NewDecoder(io.LimitReader(r.Body, 24<<20)).Decode(&req) != nil || len(req.Messages) == 0 {
 		http.Error(w, "invalid chat request", 400)
 		return
 	}
@@ -887,11 +887,44 @@ func extractSSEText(buffer *string) string {
 	return text
 }
 func (a *app) saveMessages(ctx context.Context, user uint64, req ChatRequest) {
-	a.db.ExecContext(ctx, "INSERT IGNORE INTO conversations(id,user_id,title,model) VALUES(?,?,?,?)", req.ConversationID, user, req.Messages[0].Content, req.Model)
+	a.db.ExecContext(ctx, "INSERT IGNORE INTO conversations(id,user_id,title,model) VALUES(?,?,?,?)", req.ConversationID, user, contentText(req.Messages[0].Content), req.Model)
 	for i, m := range req.Messages {
-		a.db.ExecContext(ctx, "INSERT IGNORE INTO messages(conversation_id,role,content,sequence_no) VALUES(?,?,?,?)", req.ConversationID, m.Role, m.Content, i+1)
+		a.db.ExecContext(ctx, "INSERT IGNORE INTO messages(conversation_id,role,content,sequence_no) VALUES(?,?,?,?)", req.ConversationID, m.Role, contentForStorage(m.Content), i+1)
 	}
 	a.db.ExecContext(ctx, "UPDATE conversations SET model=?,updated_at=CURRENT_TIMESTAMP(3) WHERE id=? AND user_id=?", req.Model, req.ConversationID, user)
+}
+
+func contentText(content json.RawMessage) string {
+	var text string
+	if json.Unmarshal(content, &text) == nil {
+		return text
+	}
+	var parts []struct {
+		Type     string `json:"type"`
+		Text     string `json:"text"`
+		ImageURL any    `json:"image_url"`
+	}
+	if json.Unmarshal(content, &parts) == nil {
+		var out []string
+		for _, part := range parts {
+			if part.Type == "text" && part.Text != "" {
+				out = append(out, part.Text)
+			}
+			if part.Type == "image_url" {
+				out = append(out, "[图片]")
+			}
+		}
+		return strings.Join(out, "\n")
+	}
+	return string(content)
+}
+
+func contentForStorage(content json.RawMessage) string {
+	var text string
+	if json.Unmarshal(content, &text) == nil {
+		return text
+	}
+	return string(content)
 }
 
 func (a *app) saveAssistantMessage(ctx context.Context, user uint64, conversationID, content string) {

@@ -36,9 +36,12 @@
           </div>
           <div id="messages" class="messages" aria-live="polite"></div>
           <form id="composer" class="composer">
+            <div id="attachmentList" class="attachment-list"></div>
             <textarea id="prompt" rows="1" placeholder="输入消息，或粘贴图片/request_id..." autocomplete="off"></textarea>
+            <input id="fileInput" class="hidden" type="file" accept="image/*,.txt,.md,.csv,.json,.log,.xml,.yaml,.yml" multiple />
+            <button id="attachButton" class="attach" type="button" aria-label="上传文件或图片" title="上传文件或图片">📎</button>
             <button id="sendButton" class="send" type="submit" aria-label="发送">➤</button>
-            <div class="composer-hint">按 Enter 发送，Shift+Enter 换行，支持粘贴或上传图片</div>
+            <div class="composer-hint">按 Enter 发送，Shift+Enter 换行，支持粘贴或上传文件/图片</div>
           </form>
         </section>
       </main>
