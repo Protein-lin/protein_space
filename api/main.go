@@ -717,12 +717,17 @@ func (a *app) conversations(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", 401)
 		return
 	}
-	if a.db == nil {
-		writeJSON(w, map[string]any{"conversations": []any{}})
+	if r.Method == http.MethodDelete {
+		a.deleteConversation(w, r, id)
 		return
 	}
-	if r.Method != "GET" {
-		http.Error(w, "method not allowed", 405)
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", "GET, DELETE")
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if a.db == nil {
+		writeJSON(w, map[string]any{"conversations": []any{}})
 		return
 	}
 	rows, err := a.db.Query("SELECT id,title,model,updated_at FROM conversations WHERE user_id=? ORDER BY updated_at DESC LIMIT 100", id)
@@ -739,6 +744,36 @@ func (a *app) conversations(w http.ResponseWriter, r *http.Request) {
 		out = append(out, map[string]any{"id": cid, "title": title, "model": model, "updated_at": updated})
 	}
 	writeJSON(w, map[string]any{"conversations": out})
+}
+
+func (a *app) deleteConversation(w http.ResponseWriter, r *http.Request, user uint64) {
+	id := strings.TrimSpace(r.URL.Query().Get("id"))
+	if id == "" {
+		http.Error(w, "id required", http.StatusBadRequest)
+		return
+	}
+	if a.db == nil {
+		http.Error(w, "database is not configured", http.StatusServiceUnavailable)
+		return
+	}
+	// The ownership condition is part of the delete; the messages foreign key
+	// cascades the deletion atomically, including any stored attachments.
+	result, err := a.db.ExecContext(r.Context(), "DELETE FROM conversations WHERE id=? AND user_id=?", id, user)
+	if err != nil {
+		log.Printf("delete conversation: %v", err)
+		http.Error(w, "unable to delete conversation", http.StatusInternalServerError)
+		return
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		http.Error(w, "unable to delete conversation", http.StatusInternalServerError)
+		return
+	}
+	if deleted == 0 {
+		http.Error(w, "conversation not found", http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (a *app) conversationMessages(w http.ResponseWriter, r *http.Request) {

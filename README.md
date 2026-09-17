@@ -250,11 +250,14 @@ GET      /api/auth/me
 GET/POST /api/api-keys
 GET/POST /api/provider-configs
 GET      /api/conversations
+DELETE   /api/conversations?id=<id>
 POST     /api/chat/stream
 GET/POST /api/auth/whitelist
 DELETE   /api/auth/whitelist?id=<id>
 GET      /v1/health       (Agent 内部接口)
 ```
+
+历史对话列表支持逐条删除，确认后会永久删除该对话及所有消息。删除接口仅允许操作当前用户的对话；删除当前对话后会打开空白新对话。
 
 IP 白名单命中后可以免登录和免 `X-API-Key`。白名单支持单 IP 或 CIDR，数据库表为 `auth_ip_whitelist`，环境变量 `AUTH_WHITELIST_IPS` 可配置逗号分隔的兜底范围。API 只应通过 Nginx 对外提供，避免客户端伪造 `X-Real-IP`。
 
@@ -277,6 +280,7 @@ IP 白名单命中后可以免登录和免 `X-API-Key`。白名单支持单 IP �
 (cd api && go test ./...)
 (cd agent && go test ./...)
 node --check frontend/app.js
+node --test frontend/app.test.cjs
 node --check frontend/auth.js
 bash -n scripts/install-host.sh
 ```

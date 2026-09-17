@@ -41,3 +41,5 @@
 .composer{padding-top:14px}
 .composer textarea{padding-left:0}
 .composer-hint{left:17px}
+
+.new-chat:disabled{opacity:.5;cursor:default}.conversation .delete-conversation{flex:none;padding:5px 6px;border-radius:4px;font:inherit;font-size:11px;color:#aaa}.conversation .delete-conversation:hover:not(:disabled){background:#4a2525;color:#ffb4b4}.conversation .delete-conversation:focus-visible{outline:2px solid #b4a5ff;outline-offset:1px}.conversation .delete-conversation:disabled{opacity:.45;cursor:default}
