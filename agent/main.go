@@ -200,6 +200,7 @@ func userFacingUpstreamError(err error) string {
 
 func builtinModels() []map[string]string {
 	return []map[string]string{
+		{"id": "gpt-6-astra", "name": "GPT-6 Astra", "protocol": "responses"},
 		{"id": "gpt-5.6-sol", "name": "GPT-5.6 Sol", "protocol": "responses"},
 		{"id": "gpt-5.6-terra", "name": "GPT-5.6 Terra", "protocol": "responses"},
 		{"id": "gpt-5.6-luna", "name": "GPT-5.6 Luna", "protocol": "responses"},
@@ -278,6 +279,8 @@ func modelProtocol(model string) string {
 	case strings.HasPrefix(model, "gpt-5.6"):
 		return "responses"
 	case strings.HasPrefix(model, "gpt-5.5"):
+		return "responses"
+	case strings.HasPrefix(model, "gpt-6"):
 		return "responses"
 	default:
 		return "chat_completions"
