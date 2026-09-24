@@ -18,6 +18,9 @@ Docker Compose 只运行 MySQL，不需要拉取 Nginx 或 Go 镜像。Nginx、G
 frontend/                 前端页面和 SSE 客户端
 api/                      Go API、认证、白名单和 MySQL 持久化
 agent/                    Go Agent 和上游模型 SSE
+agent/model_protocols.go  模型与上游协议格式映射
+agent/protocol_*.go       各上游协议的请求和 SSE 转换
+agent/PROTOCOLS.md         模型协议切换说明
 mysql/init/               MySQL 初始化表结构
 nginx/nginx.conf          Nginx 配置参考
 scripts/install-host.sh   Ubuntu 宿主机一键安装脚本

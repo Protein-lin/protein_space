@@ -25,6 +25,57 @@ func TestModelProtocol(t *testing.T) {
 	}
 }
 
+func TestBuiltinModelRegistry(t *testing.T) {
+	models := builtinModels()
+	if len(models) != len(modelProtocolConfigs) {
+		t.Fatalf("builtin model count = %d, want %d", len(models), len(modelProtocolConfigs))
+	}
+	for _, config := range modelProtocolConfigs {
+		if got := modelProtocol(config.ID); got != string(config.Protocol) {
+			t.Errorf("registry protocol for %q = %q, want %q", config.ID, got, config.Protocol)
+		}
+	}
+}
+
+func TestProtocolEndpointHelpers(t *testing.T) {
+	tests := []struct {
+		base        string
+		responses   string
+		completions string
+		models      string
+	}{
+		{
+			base:        "https://provider.example/v1/chat/completions",
+			responses:   "https://provider.example/v1/responses",
+			completions: "https://provider.example/v1/chat/completions",
+			models:      "https://provider.example/v1/models",
+		},
+		{
+			base:        "https://provider.example/v1/responses",
+			responses:   "https://provider.example/v1/responses",
+			completions: "https://provider.example/v1/chat/completions",
+			models:      "https://provider.example/v1/models",
+		},
+		{
+			base:        "https://provider.example",
+			responses:   "https://provider.example/v1/responses",
+			completions: "https://provider.example/v1/chat/completions",
+			models:      "https://provider.example/v1/models",
+		},
+	}
+	for _, test := range tests {
+		if got := responsesURL(test.base); got != test.responses {
+			t.Errorf("responsesURL(%q) = %q, want %q", test.base, got, test.responses)
+		}
+		if got := chatCompletionsURL(test.base); got != test.completions {
+			t.Errorf("chatCompletionsURL(%q) = %q, want %q", test.base, got, test.completions)
+		}
+		if got := modelsURL(test.base); got != test.models {
+			t.Errorf("modelsURL(%q) = %q, want %q", test.base, got, test.models)
+		}
+	}
+}
+
 func TestUpstreamErrorFallbackPolicy(t *testing.T) {
 	tests := []struct {
 		statusCode int
