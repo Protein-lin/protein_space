@@ -30,3 +30,7 @@ password: change-me-in-production
 `provider_configs.api_key_ciphertext` 不保存明文。API 层应使用环境变量 `APP_ENCRYPTION_KEY`，通过 AES-GCM 等认证加密后写入；读取时在内存中解密并传给 Agent，响应中只返回 `api_key_hint`，例如 `...0ysxXBis`。
 
 不要把 API Key 放入前端、Git、日志或 URL。之前已经发到聊天中的 Key 应立即撤销并重新生成。
+
+## 一键安装/更新
+
+执行 `sudo bash scripts/install-mysql.sh` 或 `sudo bash scripts/update-mysql.sh`。新装自动生成项目 `.env` 中的随机密码，已有密码和数据卷保持不变。更新不自动执行表结构迁移，详见 [部署说明](../DEPLOYMENT.md)。

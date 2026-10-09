@@ -32,6 +32,7 @@ func proxyChatCompletions(ctx context.Context, w http.ResponseWriter, upstream s
 		return newHTTPUpstreamError(string(ProtocolChatCompletions), upstream, resp, body)
 	}
 	scanner := bufio.NewScanner(resp.Body)
+	scanner.Buffer(make([]byte, 4096), 1024*1024)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if !strings.HasPrefix(line, "data:") {
@@ -68,5 +69,8 @@ func proxyChatCompletions(ctx context.Context, w http.ResponseWriter, upstream s
 			}
 		}
 	}
-	return scanner.Err()
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return io.ErrUnexpectedEOF
 }

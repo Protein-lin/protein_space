@@ -676,7 +676,10 @@ func (a *app) providerConfigs(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var in struct {
-		Name, BaseURL, APIKey, DefaultModel string `json:"default_model"`
+		Name         string `json:"name"`
+		BaseURL      string `json:"base_url"`
+		APIKey       string `json:"api_key"`
+		DefaultModel string `json:"default_model"`
 	}
 	if json.NewDecoder(r.Body).Decode(&in) != nil || in.Name == "" || in.BaseURL == "" || in.APIKey == "" {
 		http.Error(w, "name, base_url, api_key required", 400)
@@ -1007,6 +1010,14 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 		w.status = http.StatusOK
 	}
 	return w.ResponseWriter.Write(b)
+}
+func (w *statusWriter) Flush() {
+	if w.status == 0 {
+		w.WriteHeader(http.StatusOK)
+	}
+	if f, ok := w.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
 func (a *app) logging(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

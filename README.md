@@ -1,5 +1,7 @@
 # Protein Space / Chat
 
+安装、更新与远程上传的最新入口见 [DEPLOYMENT.md](DEPLOYMENT.md)。所有安装、更新脚本统一在 `scripts/` 下，以文件名区分项目；全站入口为 `scripts/install-host.sh` 和 `scripts/update-host.sh`。
+
 支持 SSE 流式对话、模型选择、用户登录、`X-API-Key`、MySQL 持久化和 IP 白名单。
 
 生产运行结构：
@@ -16,6 +18,8 @@ Docker Compose 只运行 MySQL，不需要拉取 Nginx 或 Go 镜像。Nginx、G
 
 ```text
 frontend/                 前端页面和 SSE 客户端
+wechat-miniprogram/        微信原生小程序（iPhone 微信可用）
+ios-app/                  SwiftUI iPhone App（iOS 16+）
 api/                      Go API、认证、白名单和 MySQL 持久化
 agent/                    Go Agent 和上游模型 SSE
 agent/model_protocols.go  模型与上游协议格式映射
@@ -56,10 +60,10 @@ git pull --ff-only origin main
 - 启动 Docker 和 Nginx
 - 启动仅监听本机的 MySQL
 - 编译 API 和 Agent 为 Linux 二进制
-- 创建 `/etc/protein-space/agent.env` 和 `api.env` 模板
+- 保留已有环境文件；首次安装生成 MySQL 随机密码、应用加密密钥及 Agent 配置模板
 - 创建并启动 `protein-agent.service`、`protein-api.service`
 - 创建宿主机 Nginx 站点和 SSE 反向代理
-- 如果已存在 Certbot 证书，同时创建 443 SSL 站点
+- 如果已存在 Certbot 证书，同时创建 443 SSL 站点；全部 `/api/` 接口共用 SSE 代理配置
 
 执行：
 
@@ -82,7 +86,7 @@ sudo nginx -t && sudo systemctl reload nginx
 sudo DOMAIN=www.linpro.top bash scripts/install-host.sh
 ```
 
-如果是第一次执行，脚本会创建配置模板后退出，不会使用占位符启动服务。填写真实配置：
+如果是第一次执行，脚本会生成数据库密码和配置模板，以退出码 2 提示填写模型配置，不会使用占位符启动服务。保留已生成的密码和加密密钥，填写真实上游配置：
 
 ```bash
 vi /opt/protein_space/.env
@@ -109,7 +113,7 @@ APP_ENCRYPTION_KEY=32字节以上随机密钥
 sudo bash scripts/install-host.sh
 ```
 
-脚本不会覆盖已经存在的环境文件。支持自定义项目目录：
+脚本不会覆盖已经存在的环境文件。全新 API、Agent 默认仅监听回环地址。支持自定义项目目录：
 
 ```bash
 sudo APP_DIR=/opt/protein_space bash scripts/install-host.sh
@@ -117,7 +121,7 @@ sudo APP_DIR=/opt/protein_space bash scripts/install-host.sh
 
 注意：API 服务读取的是 `/etc/protein-space/api.env`，不是项目根目录 `.env`。根目录 `.env` 主要用于 Docker MySQL；白名单要写入 `api.env` 的 `AUTH_WHITELIST_IPS`，或写入 MySQL 的 `auth_ip_whitelist` 表。
 
-安装脚本会移除 `/etc/nginx/sites-enabled/` 中仍引用旧域名 `tranquilsoulspace.top` 或旧 upstream `127.0.0.1:3000` 的站点链接，避免旧配置导致 502 或 80 端口 301 跳转；项目配置的 80 端口不做跳转。
+安装脚本只更新本项目的 Nginx 站点和 API snippet，不删除其他站点。已有证书时 HTTP 重定向 HTTPS；发现重复域名配置时需先处理冲突。
 
 ### 3. 验证部署
 
@@ -130,7 +134,7 @@ curl http://127.0.0.1:8080/api/health
 curl http://服务器公网IP/api/models
 ```
 
-### 3. 配置 HTTPS 和 443
+### 4. 配置 HTTPS 和 443
 
 先确认 DNS 的 `A` 记录已经指向服务器公网 IP，再执行：
 
@@ -177,9 +181,9 @@ cd /opt/protein_space
 sudo bash scripts/update-host.sh
 ```
 
-这个脚本只会拉取 `main`、编译 API/Agent、重启 `protein-agent` 和 `protein-api`，并 reload Nginx；不会重建 MySQL、环境文件、systemd 文件或 Nginx 站点配置。
+更新默认使用当前源码，先测试和编译 API/Agent，再重启服务并校验、应用 Nginx 配置。不会重置数据库卷或环境文件；Git 检出目录若需自动拉取，可使用 `sudo PULL=1 bash scripts/update-host.sh`。
 
-如果是首次启用文件/图片上传，需要先执行一次完整安装脚本，让 Nginx 应用 `client_max_body_size 24m`：
+首次安装执行以下脚本；已有安装也可用 `sudo bash scripts/update-nginx.sh` 单独更新上传限制和全部接口配置：
 
 ```bash
 sudo bash scripts/install-host.sh
@@ -234,7 +238,6 @@ docker compose exec -T mysql mysqldump -uroot -p"$MYSQL_ROOT_PASSWORD" waf_agent
 
 ```text
 GET  /api/health
-GET  /api/models
 POST /api/auth/register
 POST /api/auth/login
 ```
@@ -245,9 +248,12 @@ POST /api/auth/login
 X-API-Key: waf_xxxxxxxxx
 ```
 
-主要接口：
+主要接口（需认证或命中白名单）：
 
 ```text
+GET      /api/models
+GET      /api/conversations/messages?id=<id>
+GET/POST /api/admin/config （另需白名单权限）
 POST     /api/auth/logout
 GET      /api/auth/me
 GET/POST /api/api-keys
@@ -257,7 +263,6 @@ DELETE   /api/conversations?id=<id>
 POST     /api/chat/stream
 GET/POST /api/auth/whitelist
 DELETE   /api/auth/whitelist?id=<id>
-GET      /v1/health       (Agent 内部接口)
 ```
 
 历史对话列表支持逐条删除，确认后会永久删除该对话及所有消息。删除接口仅允许操作当前用户的对话；删除当前对话后会打开空白新对话。
@@ -291,3 +296,12 @@ bash -n scripts/install-host.sh
 API Key、数据库密码和 `APP_ENCRYPTION_KEY` 不要提交到 Git。之前暴露过的模型 Key 应立即撤销并重新生成。
 
 Agent 只有在 `AGENT_UPSTREAM_URL` 和 `AGENT_API_KEY` 配置正确时才会调用真实模型。未配置时会明确记录 `chat demo` 日志；上游配置存在但调用失败时会返回错误，不再伪装成 GPT 回复。`gpt-5.5` 只是请求的模型名，实际是否支持取决于你的 OpenAI-compatible 服务商。
+
+## 移动端对话客户端
+
+新增两个独立子目录，共用现有后端，支持文字流式对话、模型选择、新建对话、停止生成和服务器历史续聊。
+
+- [微信小程序运行说明](wechat-miniprogram/README.md)：微信开发者工具导入，配置自己的 AppID 和 request 合法域名，iPhone 微信扫码预览。
+- [iPhone App 运行说明](ios-app/README.md)：Xcode 打开原生工程，配置开发 Team 后安装到 iPhone。
+
+两端均在设置中填写 HTTPS 站点根地址及现有账户的个人 API Key（`waf_…`），不需要新增后端服务。

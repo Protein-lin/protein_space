@@ -78,7 +78,10 @@ func proxyResponses(ctx context.Context, w http.ResponseWriter, upstream, apiKey
 			return nil
 		}
 	}
-	return scanner.Err()
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	return io.ErrUnexpectedEOF
 }
 
 func responsesContent(message Message) []map[string]string {

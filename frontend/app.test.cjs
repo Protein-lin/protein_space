@@ -4,6 +4,41 @@ const fs=require('node:fs');
 const vm=require('node:vm');
 const {randomUUID}=require('node:crypto');
 
+test('text and image attachments preserve their payload when sending',()=>{
+  const {context,state}=setup();
+  state.attachments=[{name:'测试.txt',kind:'text',data:'你好🌏'},{name:'photo.png',kind:'image',data:'data:image/png;base64,AA=='}];
+  const parts=context.buildUserContent('分析附件');
+  assert.equal(parts[0].text,'分析附件');
+  assert.match(parts[1].text,/测试.txt.*\n你好🌏/);
+  assert.equal(parts[2].image_url.url,'data:image/png;base64,AA==');
+});
+
+test('stored image history restores structured content and escapes markup',()=>{
+  const {context}=setup();
+  const message=context.normalizeMessage({role:'user',content:JSON.stringify([{type:'text',text:'<script>alert(1)</script>'},{type:'image_url',image_url:{url:'data:image/png;base64,AA=='}}])});
+  assert.ok(Array.isArray(message.content));
+  const html=context.renderMessageContent(message.content);
+  assert.ok(!html.includes('<script>'));
+  assert.ok(html.includes('&lt;script&gt;'));
+  assert.ok(html.includes('<img'));
+  assert.equal(context.renderMessageContent([{type:'image_url',image_url:{url:'javascript:alert(1)'}}]),'');
+});
+
+test('unsupported and oversized attachments are rejected before reading',async()=>{
+  const {context,state,alerts}=setup();
+  await context.addFiles([{name:'large.txt',type:'text/plain',size:6*1024*1024},{name:'archive.zip',type:'application/zip',size:10}]);
+  assert.equal(state.attachments.length,0);
+  assert.equal(alerts.length,2);
+});
+
+test('attachment count limit prevents reading an additional file',async()=>{
+  const {context,state,alerts}=setup();
+  state.attachments=[{},{},{}];
+  await context.addFiles([{name:'fourth.txt',type:'text/plain',size:1}]);
+  assert.equal(state.attachments.length,3);
+  assert.match(alerts[0],/3/);
+});
+
 function setup(){
   const elements=new Map();
   const element=selector=>{

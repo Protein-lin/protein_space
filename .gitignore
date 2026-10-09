@@ -18,3 +18,10 @@ __pycache__/
 # Local relay implementation (keep out of Git)
 relay/proxy.py
 relay/README.md
+
+# Mobile development artifacts
+wechat-miniprogram/project.private.config.json
+ios-app/build/
+ios-app/DerivedData/
+**/xcuserdata/
+*.xcuserstate
