@@ -2,8 +2,11 @@ import Foundation
 import Combine
 
 @MainActor final class ChatStore: ObservableObject {
-    @Published var base = UserDefaults.standard.string(forKey: "server") ?? "https://linpro.top"
-    @Published var key = Keychain.read()
+    @Published var base: String = {
+        let saved = UserDefaults.standard.string(forKey: "server")
+        return saved == nil || saved == "https://linpro.top" ? "https://www.linpro.top" : saved!
+    }()
+    @Published var key = ""
     @Published var models: [ChatModel] = []
     @Published var model = ""
     @Published var messages: [ChatMessage] = []

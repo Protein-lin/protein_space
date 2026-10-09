@@ -59,7 +59,7 @@ const whitelistKey ctxKey = "ip_whitelist"
 
 func main() {
 	key := sha256.Sum256([]byte(env("APP_ENCRYPTION_KEY", "development-only-change-me")))
-	a := &app{agentURL: env("AGENT_URL", "http://localhost:8090"), authRequired: true, secureCookie: true, encryptionKey: key[:], whitelistEnv: splitCSV(os.Getenv("AUTH_WHITELIST_IPS")), authAttempts: make(map[string]authAttempt)}
+	a := &app{agentURL: env("AGENT_URL", "http://localhost:8090"), authRequired: envBool("AUTH_REQUIRED", false), secureCookie: true, encryptionKey: key[:], whitelistEnv: splitCSV(os.Getenv("AUTH_WHITELIST_IPS")), authAttempts: make(map[string]authAttempt)}
 	if dsn := os.Getenv("MYSQL_DSN"); dsn != "" {
 		var err error
 		a.db, err = sql.Open("mysql", dsn)
@@ -508,6 +508,10 @@ func (a *app) logout(w http.ResponseWriter, r *http.Request) {
 func (a *app) me(w http.ResponseWriter, r *http.Request) {
 	id, ok := r.Context().Value(userKey).(uint64)
 	if !ok {
+		if !a.authRequired {
+			writeJSON(w, map[string]any{"id": 0, "username": "访客", "authenticated": false, "guest": true})
+			return
+		}
 		if allowed, _ := r.Context().Value(whitelistKey).(bool); allowed {
 			writeJSON(w, map[string]any{"id": 0, "username": "ip-whitelist", "authenticated": false, "ip_whitelisted": true})
 			return
@@ -717,6 +721,10 @@ func (a *app) providerConfigs(w http.ResponseWriter, r *http.Request) {
 func (a *app) conversations(w http.ResponseWriter, r *http.Request) {
 	id, ok := r.Context().Value(userKey).(uint64)
 	if !ok {
+		if !a.authRequired && r.Method == http.MethodGet {
+			writeJSON(w, map[string]any{"conversations": []any{}, "guest": true})
+			return
+		}
 		http.Error(w, "unauthorized", 401)
 		return
 	}
@@ -980,7 +988,7 @@ func (a *app) auth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		whitelisted := a.ipWhitelisted(r)
 		log.Printf("auth path=%s method=%s client_ip=%s whitelisted=%t auth_required=%t", r.URL.Path, r.Method, requestIPString(r), whitelisted, a.authRequired)
-		if whitelisted || r.URL.Path == "/api/health" || r.URL.Path == "/api/auth/login" || r.URL.Path == "/api/auth/register" || !a.authRequired {
+		if whitelisted || r.URL.Path == "/api/health" || r.URL.Path == "/api/auth/login" || r.URL.Path == "/api/auth/register" {
 			if whitelisted {
 				ctx := context.WithValue(r.Context(), whitelistKey, true)
 				if a.rootUserID > 0 {
@@ -995,8 +1003,20 @@ func (a *app) auth(next http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(context.WithValue(r.Context(), userKey, id)))
 			return
 		}
+		// Guest chat does not share an account, stored history or admin access.
+		if !a.authRequired && guestChatRoute(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		http.Error(w, "unauthorized", 401)
 	})
+}
+
+func guestChatRoute(r *http.Request) bool {
+	if r.Method == http.MethodGet {
+		return r.URL.Path == "/api/models" || r.URL.Path == "/api/auth/me" || r.URL.Path == "/api/conversations"
+	}
+	return r.Method == http.MethodPost && r.URL.Path == "/api/chat/stream"
 }
 
 type statusWriter struct {

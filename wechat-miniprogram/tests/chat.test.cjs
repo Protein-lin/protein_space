@@ -72,3 +72,17 @@ test('failure preserves partial reply and next send excludes empty assistant', a
   assert.equal(page.data.busy, false); page.data.input = 'retry'; page.send();
   assert.equal(api.streamCall.body.messages.filter(m => m.role === 'assistant').length, 0);
 });
+
+
+test('default website and old bare-domain setting connect without a key', async () => {
+  const calls = [];
+  const api = { normalizeBase, async request(base, key) {
+    calls.push({base, key}); return {models:[{id:'one'}], default:'one'};
+  }};
+  for (const saved of [undefined, 'https://linpro.top', 'https://custom.example.com']) {
+    const page = createPage(api, {getStorageSync() {return saved;}, setStorageSync() {}});
+    await page.connect();
+    assert.equal(page.data.connected, true);
+    assert.deepEqual(calls.at(-1), {base:saved === 'https://custom.example.com' ? saved : 'https://www.linpro.top', key:''});
+  }
+});

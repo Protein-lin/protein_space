@@ -92,6 +92,59 @@ func TestAuthBoundary(t *testing.T) {
 	}
 }
 
+func TestGuestChatRoutes(t *testing.T) {
+	for _, tc := range []struct {
+		method, path string
+		allowed      bool
+	}{
+		{"GET", "/api/models", true}, {"POST", "/api/chat/stream", true},
+		{"GET", "/api/auth/me", true}, {"GET", "/api/conversations", true},
+		{"DELETE", "/api/conversations?id=private", false},
+		{"GET", "/api/conversations/messages?id=private", false},
+		{"GET", "/api/api-keys", false}, {"POST", "/api/provider-configs", false},
+		{"GET", "/api/admin/config", false}, {"POST", "/api/auth/whitelist", false},
+	} {
+		t.Run(tc.method+tc.path, func(t *testing.T) {
+			a := &app{authRequired: false, rootUserID: 7}
+			w := httptest.NewRecorder()
+			a.auth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if !tc.allowed {
+					t.Error("private route allowed")
+				}
+				if r.Context().Value(userKey) != nil || r.Context().Value(whitelistKey) != nil {
+					t.Error("guest inherited an account or whitelist")
+				}
+				w.WriteHeader(204)
+			})).ServeHTTP(w, httptest.NewRequest(tc.method, tc.path, nil))
+			want := 401
+			if tc.allowed {
+				want = 204
+			}
+			if w.Code != want {
+				t.Fatalf("status %d, want %d", w.Code, want)
+			}
+		})
+	}
+}
+
+func TestGuestProfileAndHistory(t *testing.T) {
+	a := &app{authRequired: false}
+	for _, tc := range []struct {
+		path    string
+		handler http.HandlerFunc
+	}{{"/api/auth/me", a.me}, {"/api/conversations", a.conversations}} {
+		w := httptest.NewRecorder()
+		a.auth(tc.handler).ServeHTTP(w, httptest.NewRequest("GET", tc.path, nil))
+		var body map[string]any
+		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &body) != nil || body["guest"] != true {
+			t.Fatalf("invalid guest response: %s", w.Body.String())
+		}
+		if tc.path == "/api/conversations" && len(body["conversations"].([]any)) != 0 {
+			t.Fatal("guest saw stored history")
+		}
+	}
+}
+
 func TestForwardedWhitelistBoundary(t *testing.T) {
 	a := &app{authRequired: true, whitelistEnv: []string{"192.0.2.0/24"}, rootUserID: 7}
 	for _, tc := range []struct {

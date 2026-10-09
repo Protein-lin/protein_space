@@ -304,4 +304,4 @@ Agent 只有在 `AGENT_UPSTREAM_URL` 和 `AGENT_API_KEY` 配置正确时才会�
 - [微信小程序运行说明](wechat-miniprogram/README.md)：微信开发者工具导入，配置自己的 AppID 和 request 合法域名，iPhone 微信扫码预览。
 - [iPhone App 运行说明](ios-app/README.md)：Xcode 打开原生工程，配置开发 Team 后安装到 iPhone。
 
-两端均在设置中填写 HTTPS 站点根地址及现有账户的个人 API Key（`waf_…`），不需要新增后端服务。
+两端默认连接 `https://www.linpro.top`，当前免登录模式下无需填写 Key，不需要新增后端服务。已有服务器更新后执行 `sudo bash scripts/set-chat-auth.sh off` 生效；访客聊天只保留当前会话，详见部署说明。

@@ -78,11 +78,11 @@ struct ChatView: View {
         NavigationStack {
             Form {
                 Section("服务连接") {
-                    TextField("https://linpro.top", text: $store.base).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
-                    SecureField("个人 API Key（waf_…）", text: $store.key).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    TextField("https://www.linpro.top", text: $store.base).keyboardType(.URL).textInputAutocapitalization(.never).autocorrectionDisabled()
+                    SecureField("个人 API Key（可选）", text: $store.key).textInputAutocapitalization(.never).autocorrectionDisabled()
                 }
                 Section {
-                    Text("在网页账户中创建个人 API Key。Key 保存于本机钥匙串；IP 白名单用户可留空。服务地址不要添加 /api。").font(.footnote).foregroundStyle(.secondary)
+                    Text("当前支持免登录聊天，无需填写 Key。访客聊天仅保留在当前会话，不保存服务器历史。服务地址不要添加 /api。").font(.footnote).foregroundStyle(.secondary)
                     if !store.error.isEmpty { Text(store.error).foregroundStyle(.red).font(.footnote) }
                     Button { Task { await store.connect() } } label: {
                         HStack { Text("连接服务"); if store.loading { Spacer(); ProgressView() } }

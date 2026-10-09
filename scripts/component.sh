@@ -60,7 +60,7 @@ prepare_env() {
       encryption="$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')"
       printf '%s\n' 'API_ADDR=127.0.0.1:8080' 'AGENT_URL=http://127.0.0.1:8090' \
         "MYSQL_DSN=waf:$db_password@tcp(127.0.0.1:3306)/waf_agent?parseTime=true&charset=utf8mb4" \
-        "APP_ENCRYPTION_KEY=$encryption" 'AUTH_WHITELIST_IPS=127.0.0.1/32,::1/128' > "$ENV_DIR/api.env"
+        "APP_ENCRYPTION_KEY=$encryption" 'AUTH_REQUIRED=false' 'AUTH_WHITELIST_IPS=127.0.0.1/32,::1/128' > "$ENV_DIR/api.env"
     fi
     if grep -qE 'REPLACE_ME|替换为' "$ENV_DIR/api.env"; then
       echo "请在 $ENV_DIR/api.env 填写数据库配置。" >&2; missing=1

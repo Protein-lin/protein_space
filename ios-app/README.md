@@ -7,7 +7,7 @@
 1. 在 Mac 安装完整 Xcode，打开 `ProteinChat.xcodeproj`。
 2. 选择 `ProteinChat` target，在「Signing & Capabilities」选择自己的开发 Team，将 Bundle Identifier `com.example.proteinspace.chat` 修改为你自己的唯一标识。
 3. 连接 iPhone，按 Xcode 的提示完成设备配对及开发者模式设置，选择手机为运行目标并点击 Run。也可先选择 iPhone 模拟器运行。
-4. App「连接设置」默认填入 `https://linpro.top`，改为实际服务器的 HTTPS 根地址（不要加 `/api`），输入在网页账户创建的个人 API Key（`waf_…`），点击连接服务。IP 白名单用户可留空。
+4. App「连接设置」默认填入 `https://www.linpro.top`，改为实际服务器的 HTTPS 根地址（不要加 `/api`），当前免登录模式下 Key 留空，点击连接服务。
 5. 选择模型并发送消息。历史记录与现有网页账户共享，依赖后端数据库。
 
 工程未绑定开发 Team，不包含签名证书，也未生成已签名 IPA。正式分发需自行配置 App 图标、开发者签名和 App Store Connect / TestFlight 发布资料。
@@ -38,3 +38,7 @@ xcodebuild -project ios-app/ProteinChat.xcodeproj -scheme ProteinChat \
 ## 一键构建/更新
 
 在 macOS 执行 `bash scripts/install-ios-app.sh` 或 `bash scripts/update-ios-app.sh`，先运行网络层测试再构建模拟器 App；需要完整 Xcode。可通过 `SIMULATOR_ID` 指定模拟器安装目标。服务器只需部署共用后端，详见 [部署说明](../DEPLOYMENT.md)。
+
+## 临时免登录模式
+
+后端 `AUTH_REQUIRED=false`（未配置时也默认关闭聊天认证）允许直接读取模型和聊天，无需个人 Key。访客消息仅保留在当前会话，不读取或保存账号历史；使用有效个人 Key 时仍可访问自己的历史。管理后台和账号配置接口保留认证。已有服务器先更新代码，再执行 `sudo bash scripts/set-chat-auth.sh off`。恢复认证执行同一脚本的 `on` 参数。

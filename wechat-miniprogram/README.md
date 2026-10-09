@@ -5,8 +5,8 @@
 ## 运行
 
 1. 在微信开发者工具中导入本目录，使用你自己的小程序 AppID 替换 `project.config.json` 中的 `touristappid`。游客模式仅用于本地查看，不用于真机发布。
-2. 在小程序管理后台的「开发管理 → 开发设置 → 服务器域名」中，将实际服务的 HTTPS 域名加入 request 合法域名，例如 `https://linpro.top`。使用有效 HTTPS 证书，服务端 `/api/` 需可从手机网络访问。
-3. 编译，进入「设置」，填写站点根地址及网页账户创建的个人 API Key（`waf_…`），点击「连接服务」。地址不要加 `/api`。命中服务器 IP 白名单时 Key 可留空。
+2. 在小程序管理后台的「开发管理 → 开发设置 → 服务器域名」中，将实际服务的 HTTPS 域名加入 request 合法域名，例如 `https://www.linpro.top`。使用有效 HTTPS 证书，服务端 `/api/` 需可从手机网络访问。
+3. 编译，进入「设置」，默认站点为 `https://www.linpro.top`，免登录模式下 Key 留空，点击「连接服务」。地址不要加 `/api`。
 4. 点击开发者工具的「预览」，用 iPhone 微信扫描二维码；正式发布需使用自己的小程序账号上传并完成微信审核。
 
 个人 Key 只在页面内存中保留，重启小程序后重新输入；仅站点地址保存于本地。不要把模型服务商密钥放到客户端。
@@ -34,3 +34,7 @@ node --check wechat-miniprogram/pages/chat/chat.js
 ## 一键检查/打开
 
 执行 `bash scripts/install-wechat-miniprogram.sh` 或 `bash scripts/update-wechat-miniprogram.sh`，先运行测试再打开微信开发者工具。可设置 `WECHAT_CLI` 指定工具路径，`CHECK_ONLY=1` 仅测试。服务器部署共用后端，详见 [部署说明](../DEPLOYMENT.md)。
+
+## 临时免登录模式
+
+后端 `AUTH_REQUIRED=false`（未配置时也默认关闭聊天认证）允许直接读取模型和聊天，无需个人 Key。访客消息仅保留在当前会话，不读取或保存账号历史；使用有效个人 Key 时仍可访问自己的历史。管理后台和账号配置接口保留认证。已有服务器先更新代码，再执行 `sudo bash scripts/set-chat-auth.sh off`。恢复认证执行同一脚本的 `on` 参数。

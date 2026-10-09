@@ -173,6 +173,20 @@ esac
         self.assertIn(secret, (Path(self.env["ENV_DIR"]) / "api.env").read_text())
         self.assertNotIn("systemctl", log.read_text())
 
+    def test_chat_auth_switch_preserves_existing_settings(self):
+        self.mock_commands()
+        config = Path(self.env["ENV_DIR"]) / "api.env"
+        config.write_text("MYSQL_DSN=keep\nAUTH_REQUIRED=true\nAPP_ENCRYPTION_KEY=keep\n")
+        for mode, expected in [("off", "false"), ("off", "false"), ("on", "true")]:
+            result = self.run_script("scripts/set-chat-auth.sh", mode)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            text = config.read_text()
+            self.assertEqual(text.count("AUTH_REQUIRED="), 1)
+            self.assertIn("AUTH_REQUIRED=" + expected, text)
+            self.assertIn("MYSQL_DSN=keep", text)
+            self.assertIn("APP_ENCRYPTION_KEY=keep", text)
+            self.assertEqual(config.stat().st_mode & 0o777, 0o600)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,9 +1,9 @@
 <view class="shell">
   <view class="toolbar"><view><view class="brand">Protein Space</view><text class="subtitle">随时开启一段新对话</text></view><button size="mini" bindtap="toggleSettings" disabled="{{busy || loading}}">设置</button></view>
   <view wx:if="{{settings}}" class="settings">
-    <text class="label">服务地址</text><input value="{{base}}" data-field="base" bindinput="field" placeholder="https://linpro.top" disabled="{{loading}}"/>
-    <text class="label">个人 API Key</text><input value="{{key}}" data-field="key" bindinput="field" password placeholder="waf_…（白名单用户可留空）" disabled="{{loading}}"/>
-    <text class="hint">使用网页账户创建的 Key，仅在本次小程序会话中保留。</text><button class="primary" bindtap="connect" loading="{{loading}}" disabled="{{loading}}">连接服务</button>
+    <text class="label">服务地址</text><input value="{{base}}" data-field="base" bindinput="field" placeholder="https://www.linpro.top" disabled="{{loading}}"/>
+    <text class="label">个人 API Key（可选）</text><input value="{{key}}" data-field="key" bindinput="field" password placeholder="免登录模式请留空" disabled="{{loading}}"/>
+    <text class="hint">当前支持免登录聊天，无需填写 Key。访客聊天仅保留在当前会话，不保存服务器历史。</text><button class="primary" bindtap="connect" loading="{{loading}}" disabled="{{loading}}">连接服务</button>
   </view>
   <view class="actions"><button size="mini" bindtap="newChat" disabled="{{busy || loading}}">＋ 新对话</button><button size="mini" bindtap="history" disabled="{{!connected || busy || loading}}">历史记录</button><picker range="{{models}}" range-key="id" value="{{modelIndex}}" bindchange="chooseModel" disabled="{{!connected || busy || loading}}"><view class="model">{{models[modelIndex].id || '未连接'}} ▾</view></picker></view>
   <view wx:if="{{error}}" class="error"><text selectable>{{error}}</text></view>

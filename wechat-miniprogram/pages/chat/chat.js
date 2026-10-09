@@ -1,7 +1,7 @@
 const api = require('../../utils/api');
 Page({
-  data: { base: 'https://linpro.top', key: '', settings: true, connected: false, loading: false, busy: false, models: [], modelIndex: 0, messages: [], input: '', error: '', history: [], showHistory: false, anchor: '' },
-  onLoad() { this.setData({ base: wx.getStorageSync('protein-base') || this.data.base }); this.newChat(); },
+  data: { base: 'https://www.linpro.top', key: '', settings: true, connected: false, loading: false, busy: false, models: [], modelIndex: 0, messages: [], input: '', error: '', history: [], showHistory: false, anchor: '' },
+  onLoad() { const saved = wx.getStorageSync('protein-base'); this.setData({ base: !saved || saved === 'https://linpro.top' ? this.data.base : saved }); this.newChat(); },
   onUnload() { this.disposed = true; if (this.active) this.active.abort(); },
   field(e) { this.setData({ [e.currentTarget.dataset.field]: e.detail.value }); },
   toggleSettings() { if (!this.data.busy && !this.data.loading) this.setData({ settings: !this.data.settings }); },

@@ -73,7 +73,7 @@ GET       /api/conversations/messages
 POST      /api/chat/stream
 ```
 
-认证和权限检查由 API 执行，Nginx 不绕过登录或白名单。Agent 的 `/v1/` 为内部接口，公网返回 404。聊天关闭响应缓冲、缓存和压缩，读写超时 1 小时，上传限制 24MB。
+认证和权限检查由 API 执行。当前默认 `AUTH_REQUIRED=false` 允许访客读取模型和聊天；账号配置和管理接口仍需原有认证。Nginx 不改变权限。Agent 的 `/v1/` 为内部接口，公网返回 404。聊天关闭响应缓冲、缓存和压缩，读写超时 1 小时，上传限制 24MB。
 
 检测到 `/etc/letsencrypt/live/$DOMAIN/` 证书时启用 HTTPS，HTTP 重定向 HTTPS；没有证书时只启用 HTTP，并不会自动申请证书。移动端要求有效 HTTPS，申请证书后执行 `sudo bash scripts/update-nginx.sh`。其他站点配置不会自动删除；若其他配置已声明相同域名，应先处理重复站点。
 
@@ -89,3 +89,20 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 ```
 
 健康检查不代替真实模型对话与持久化测试。线上对话验证需有效账号或个人 API Key。
+
+
+## 连接 www.linpro.top，临时关闭聊天认证
+
+客户端默认使用 `https://www.linpro.top`；原来保存的 `https://linpro.top` 自动迁移为 www 地址，自定义地址保留。Nginx 的默认 `DOMAIN=linpro.top` 同时覆盖这两个域名，不要为此把 DOMAIN 改成 www 域名，否则会改变默认的证书查找路径。
+
+已有服务器执行：
+
+```bash
+cd /opt/protein_space
+git pull --ff-only origin main
+sudo bash scripts/update-host.sh
+sudo bash scripts/set-chat-auth.sh off
+curl --fail https://www.linpro.top/api/models
+```
+
+新安装默认关闭聊天认证。既有 api.env 的 AUTH_REQUIRED 值会保留，因此需显式执行 off；恢复时执行 `sudo bash scripts/set-chat-auth.sh on`。免登录模式向所有能访问站点的用户开放模型调用，访客只保留当前会话，不共享管理员身份或账号历史。有效登录/API Key 的历史功能保持不变。微信后台的 request 合法域名也需配置为 `https://www.linpro.top`。
