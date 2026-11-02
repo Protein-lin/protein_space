@@ -18,6 +18,7 @@ type Message struct {
 	Content json.RawMessage `json:"content"`
 }
 type ChatRequest struct {
+	Task           string    `json:"task,omitempty"`
 	ConversationID string    `json:"conversation_id"`
 	Model          string    `json:"model"`
 	Messages       []Message `json:"messages"`
@@ -111,6 +112,10 @@ func (s *Service) chat(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Model == "" {
 		req.Model = s.defaultModel
+	}
+	if req.Task == "waf_rules" && req.UpstreamURL == "" && s.upstream == "" {
+		http.Error(w, "规则生成需要配置真实的 Agent 模型服务", http.StatusServiceUnavailable)
+		return
 	}
 	setupSSE(w)
 	ctx := r.Context()

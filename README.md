@@ -305,3 +305,17 @@ Agent 只有在 `AGENT_UPSTREAM_URL` 和 `AGENT_API_KEY` 配置正确时才会�
 - [iPhone App 运行说明](ios-app/README.md)：Xcode 打开原生工程，配置开发 Team 后安装到 iPhone。
 
 两端默认连接 `https://www.linpro.top`，当前免登录模式下无需填写 Key，不需要新增后端服务。已有服务器更新后执行 `sudo bash scripts/set-chat-auth.sh off` 生效；访客聊天只保留当前会话，详见部署说明。
+
+### WAF 规则文档生成
+
+首页或对话页点击「WAF 规则生成」，也可访问 `/waf-rules.html`。粘贴或导入请求日志、HTTP 请求或 PoC 文本，选择模型及可选的已授权 Provider，生成与示例一致的十列表格。支持编辑规则 JSON、下载 HTML 文档、下载接口数据 JSON、复制 cURL。
+
+`POST /api/waf-rules/generate` 接收 `input`、`model`、可选 `context` 和 `provider_config_id`，沿用聊天鉴权、模型权限与 SSE 流。必须配置真实 Agent 上游或选择已授权 Provider；无上游时返回错误，不使用演示回答。生成内容不保存到聊天历史。
+
+接口契约已从 `/Users/linyangzhi/git/wafrule` 的 `app/api_1_0/rule.py`、`rule_utils.py`、`app/views/rule.py`、`app/models/rule.py` 和 `util/record_dict.py` 阅读提取，存于 `api/waf_rules_prompt.txt`，编译时嵌入；部署时不需要原仓库目录。契约随源码变更需同步更新。
+
+目标接口为 `POST /waf_rule/api/create_general`，使用 `application/x-www-form-urlencoded`，需要目标系统登录会话及 `rule_edit` 权限。表单默认观察模式 (`mode=true`)、单次记分 (`fac=false`)。`score_json` 是 JSON 字符串；文档的 `waf_id/name/cve/payload` 和阈值不是创建表单字段。
+
+当前生成普通正则规则草案，不执行 PoC 或提交到目标服务。部署数据库中的阶段/区域映射及严格、普通阈值应填入补充说明；未知值保留待确认，阶段或区域缺失时不生成 cURL。需要跨区域 AND 的链式规则仅显示分析文档并标注待适配，不生成普通规则请求。结构校验不替代目标 WAF 的正则、枚举、误报和效果验证。HTML 可直接用浏览器打开或打印。
+
+验证：`node --test frontend/*.test.cjs`，并分别在 `api/` 和 `agent/` 执行 `go test ./...`。

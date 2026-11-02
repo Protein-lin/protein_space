@@ -29,6 +29,7 @@ type Message struct {
 	Content json.RawMessage `json:"content"`
 }
 type ChatRequest struct {
+	Task             string    `json:"task,omitempty"`
 	ConversationID   string    `json:"conversation_id"`
 	Model            string    `json:"model"`
 	ProviderConfigID uint64    `json:"provider_config_id"`
@@ -94,6 +95,7 @@ func main() {
 	mux.HandleFunc("/api/conversations", a.conversations)
 	mux.HandleFunc("/api/conversations/messages", a.conversationMessages)
 	mux.HandleFunc("/api/chat/stream", a.chatStream)
+	mux.HandleFunc("/api/waf-rules/generate", a.wafRules)
 	s := &http.Server{Addr: env("API_ADDR", ":8080"), Handler: a.logging(a.cors(a.auth(mux))), ReadHeaderTimeout: 10 * time.Second}
 	log.Printf("api listening on %s auth_required=%v", s.Addr, a.authRequired)
 	log.Fatal(s.ListenAndServe())
@@ -1016,7 +1018,7 @@ func guestChatRoute(r *http.Request) bool {
 	if r.Method == http.MethodGet {
 		return r.URL.Path == "/api/models" || r.URL.Path == "/api/auth/me" || r.URL.Path == "/api/conversations"
 	}
-	return r.Method == http.MethodPost && r.URL.Path == "/api/chat/stream"
+	return r.Method == http.MethodPost && (r.URL.Path == "/api/chat/stream" || r.URL.Path == "/api/waf-rules/generate")
 }
 
 type statusWriter struct {
