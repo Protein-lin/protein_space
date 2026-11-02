@@ -37,8 +37,8 @@ xcodebuild -project ios-app/ProteinChat.xcodeproj -scheme ProteinChat \
 
 ## 一键构建/更新
 
-在 macOS 执行 `bash scripts/install-ios-app.sh` 或 `bash scripts/update-ios-app.sh`，先运行网络层测试再构建模拟器 App；需要完整 Xcode。可通过 `SIMULATOR_ID` 指定模拟器安装目标。服务器只需部署共用后端，详见 [部署说明](../DEPLOYMENT.md)。
+在 macOS 执行 `bash scripts/deploy.sh install ios-app` 或 `bash scripts/deploy.sh update ios-app`，先运行网络层测试再构建模拟器 App；需要完整 Xcode。可通过 `SIMULATOR_ID` 指定模拟器安装目标。服务器只需部署共用后端，详见 [部署说明](../DEPLOYMENT.md)。
 
 ## 临时免登录模式
 
-后端 `AUTH_REQUIRED=false`（未配置时也默认关闭聊天认证）允许直接读取模型和聊天，无需个人 Key。访客消息仅保留在当前会话，不读取或保存账号历史；使用有效个人 Key 时仍可访问自己的历史。管理后台和账号配置接口保留认证。已有服务器先更新代码，再执行 `sudo bash scripts/set-chat-auth.sh off`。恢复认证执行同一脚本的 `on` 参数。
+后端 `AUTH_REQUIRED=false`（未配置时也默认关闭聊天认证）允许直接读取模型和聊天，无需个人 Key。访客消息仅保留在当前会话，不读取或保存账号历史；使用有效个人 Key 时仍可访问自己的历史。管理后台和账号配置接口保留认证。已有服务器先更新代码，再执行 `sudo bash scripts/deploy.sh auth off`。恢复认证执行同一脚本的 `on` 参数。

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 MODE="${1:-}"
-case "$MODE" in on) VALUE=true;; off) VALUE=false;; *) echo '用法：sudo bash scripts/set-chat-auth.sh off|on' >&2; exit 2;; esac
+case "$MODE" in on) VALUE=true;; off) VALUE=false;; *) echo '用法：sudo bash scripts/deploy.sh auth off|on' >&2; exit 2;; esac
 [[ "$(id -u)" == 0 ]] || { echo '请使用 sudo 执行' >&2; exit 1; }
 ENV_FILE="${ENV_DIR:-/etc/protein-space}/api.env"
 [[ -f "$ENV_FILE" ]] || { echo "请先安装 API：缺少 $ENV_FILE" >&2; exit 1; }

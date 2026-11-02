@@ -33,4 +33,4 @@ password: change-me-in-production
 
 ## 一键安装/更新
 
-执行 `sudo bash scripts/install-mysql.sh` 或 `sudo bash scripts/update-mysql.sh`。新装自动生成项目 `.env` 中的随机密码，已有密码和数据卷保持不变。更新不自动执行表结构迁移，详见 [部署说明](../DEPLOYMENT.md)。
+执行 `sudo bash scripts/deploy.sh install mysql` 或 `sudo bash scripts/deploy.sh update mysql`。新装自动生成项目 `.env` 中的随机密码，已有密码和数据卷保持不变。更新不自动执行表结构迁移，详见 [部署说明](../DEPLOYMENT.md)。

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 export APP_DIR="${APP_DIR:-$ROOT}"
 ENV_DIR="${ENV_DIR:-/etc/protein-space}"
 SYSTEMD_DIR="${SYSTEMD_DIR:-/etc/systemd/system}"
@@ -145,7 +145,7 @@ nginx_apply() {
   mkdir -p "$NGINX_DIR/sites-available" "$NGINX_DIR/sites-enabled" "$NGINX_DIR/snippets"
   [[ ! -e "$site" ]] || cp -p "$site" "$backup/site"
   [[ ! -e "$snippet" ]] || cp -p "$snippet" "$backup/snippet"
-  if ! SNIPPET="$snippet" bash "$APP_DIR/scripts/render-nginx.sh" > "$backup/rendered"; then rm -rf "$backup"; return 1; fi
+  if ! SNIPPET="$snippet" bash "$APP_DIR/scripts/lib/nginx.sh" > "$backup/rendered"; then rm -rf "$backup"; return 1; fi
   cp "$backup/rendered" "$site"
   cp "$APP_DIR/nginx/api-locations.conf" "$snippet"
   local new_link=0
@@ -164,7 +164,7 @@ nginx_apply() {
 if [[ "$action" == install ]]; then prepare_env; fi
 if [[ "$component" == all || "$component" == api || "$component" == agent ]]; then
   if [[ "$action" == install ]]; then install_packages golang-go ca-certificates curl; fi
-  command -v go >/dev/null || { echo '请先执行 scripts/install-host.sh 安装 Go' >&2; exit 1; }
+  command -v go >/dev/null || { echo '请先执行 scripts/deploy.sh install 安装 Go' >&2; exit 1; }
 fi
 if [[ "$component" == all || "$component" == nginx || "$component" == frontend ]]; then
   if [[ "$action" == install ]]; then install_packages nginx ca-certificates curl; fi

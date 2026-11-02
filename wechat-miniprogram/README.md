@@ -33,8 +33,8 @@ node --check wechat-miniprogram/pages/chat/chat.js
 
 ## 一键检查/打开
 
-执行 `bash scripts/install-wechat-miniprogram.sh` 或 `bash scripts/update-wechat-miniprogram.sh`，先运行测试再打开微信开发者工具。可设置 `WECHAT_CLI` 指定工具路径，`CHECK_ONLY=1` 仅测试。服务器部署共用后端，详见 [部署说明](../DEPLOYMENT.md)。
+执行 `bash scripts/deploy.sh install wechat-miniprogram` 或 `bash scripts/deploy.sh update wechat-miniprogram`，先运行测试再打开微信开发者工具。可设置 `WECHAT_CLI` 指定工具路径，`CHECK_ONLY=1` 仅测试。服务器部署共用后端，详见 [部署说明](../DEPLOYMENT.md)。
 
 ## 临时免登录模式
 
-后端 `AUTH_REQUIRED=false`（未配置时也默认关闭聊天认证）允许直接读取模型和聊天，无需个人 Key。访客消息仅保留在当前会话，不读取或保存账号历史；使用有效个人 Key 时仍可访问自己的历史。管理后台和账号配置接口保留认证。已有服务器先更新代码，再执行 `sudo bash scripts/set-chat-auth.sh off`。恢复认证执行同一脚本的 `on` 参数。
+后端 `AUTH_REQUIRED=false`（未配置时也默认关闭聊天认证）允许直接读取模型和聊天，无需个人 Key。访客消息仅保留在当前会话，不读取或保存账号历史；使用有效个人 Key 时仍可访问自己的历史。管理后台和账号配置接口保留认证。已有服务器先更新代码，再执行 `sudo bash scripts/deploy.sh auth off`。恢复认证执行同一脚本的 `on` 参数。

@@ -1,6 +1,6 @@
 # Protein Space / Chat
 
-安装、更新与远程上传的最新入口见 [DEPLOYMENT.md](DEPLOYMENT.md)。所有安装、更新脚本统一在 `scripts/` 下，以文件名区分项目；全站入口为 `scripts/install-host.sh` 和 `scripts/update-host.sh`。
+安装、更新与远程上传的最新入口见 [DEPLOYMENT.md](DEPLOYMENT.md)。安装、更新、远程上传与认证设置统一使用 `scripts/deploy.sh`，执行 `bash scripts/deploy.sh help` 查看用法；内部实现集中在 `scripts/lib/`。
 
 支持 SSE 流式对话、模型选择、用户登录、`X-API-Key`、MySQL 持久化和 IP 白名单。
 
@@ -12,7 +12,7 @@
                              Docker MySQL (127.0.0.1:3306)
 ```
 
-Docker Compose 只运行 MySQL，不需要拉取 Nginx 或 Go 镜像。Nginx、Go 编译、systemd 和反向代理配置统一由 `scripts/install-host.sh` 处理。
+Docker Compose 只运行 MySQL，不需要拉取 Nginx 或 Go 镜像。Nginx、Go 编译、systemd 和反向代理配置统一由 `scripts/deploy.sh install` 处理。
 
 ## 目录
 
@@ -27,7 +27,7 @@ agent/protocol_*.go       各上游协议的请求和 SSE 转换
 agent/PROTOCOLS.md         模型协议切换说明
 mysql/init/               MySQL 初始化表结构
 nginx/nginx.conf          Nginx 配置参考
-scripts/install-host.sh   Ubuntu 宿主机一键安装脚本
+scripts/deploy.sh           安装、更新与远程部署统一入口
 relay/                    可选 Python 内网中转代理（支持 SSE）
 docker-compose.yml        仅启动 MySQL
 ```
@@ -68,7 +68,7 @@ git pull --ff-only origin main
 执行：
 
 ```bash
-sudo bash scripts/install-host.sh
+sudo bash scripts/deploy.sh install
 ```
 
 如果已经申请了 `linpro.top` 的证书，脚本会生成 80 和 443 两个监听；443 不做额外 upstream，`/api/` 仍转发到 `127.0.0.1:8080`。如果尚未有证书，先只生成 80 配置，申请证书后再次执行脚本即可启用 443：
@@ -76,14 +76,14 @@ sudo bash scripts/install-host.sh
 ```bash
 sudo apt install -y certbot python3-certbot-nginx
 sudo certbot certonly --nginx -d linpro.top -d www.linpro.top
-sudo bash scripts/install-host.sh
+sudo bash scripts/deploy.sh install
 sudo nginx -t && sudo systemctl reload nginx
 ```
 
 脚本默认配置 `linpro.top`，其他域名可以这样执行：
 
 ```bash
-sudo DOMAIN=www.linpro.top bash scripts/install-host.sh
+sudo DOMAIN=www.linpro.top bash scripts/deploy.sh install
 ```
 
 如果是第一次执行，脚本会生成数据库密码和配置模板，以退出码 2 提示填写模型配置，不会使用占位符启动服务。保留已生成的密码和加密密钥，填写真实上游配置：
@@ -110,13 +110,13 @@ APP_ENCRYPTION_KEY=32字节以上随机密钥
 再次执行脚本完成编译、服务和 Nginx 配置：
 
 ```bash
-sudo bash scripts/install-host.sh
+sudo bash scripts/deploy.sh install
 ```
 
 脚本不会覆盖已经存在的环境文件。全新 API、Agent 默认仅监听回环地址。支持自定义项目目录：
 
 ```bash
-sudo APP_DIR=/opt/protein_space bash scripts/install-host.sh
+sudo APP_DIR=/opt/protein_space bash scripts/deploy.sh install
 ```
 
 注意：API 服务读取的是 `/etc/protein-space/api.env`，不是项目根目录 `.env`。根目录 `.env` 主要用于 Docker MySQL；白名单要写入 `api.env` 的 `AUTH_WHITELIST_IPS`，或写入 MySQL 的 `auth_ip_whitelist` 表。
@@ -178,25 +178,25 @@ docker compose logs -f mysql
 
 ```bash
 cd /opt/protein_space
-sudo bash scripts/update-host.sh
+sudo bash scripts/deploy.sh update
 ```
 
-更新默认使用当前源码，先测试和编译 API/Agent，再重启服务并校验、应用 Nginx 配置。不会重置数据库卷或环境文件；Git 检出目录若需自动拉取，可使用 `sudo PULL=1 bash scripts/update-host.sh`。
+更新默认使用当前源码，先测试和编译 API/Agent，再重启服务并校验、应用 Nginx 配置。不会重置数据库卷或环境文件；Git 检出目录若需自动拉取，可使用 `sudo bash scripts/deploy.sh update --pull`。
 
-首次安装执行以下脚本；已有安装也可用 `sudo bash scripts/update-nginx.sh` 单独更新上传限制和全部接口配置：
+首次安装执行以下脚本；已有安装也可用 `sudo bash scripts/deploy.sh update nginx` 单独更新上传限制和全部接口配置：
 
 ```bash
-sudo bash scripts/install-host.sh
+sudo bash scripts/deploy.sh install
 ```
 
-之后文件/图片上传相关的代码更新仍然只执行 `update-host.sh` 即可。
+之后文件/图片上传相关的代码更新仍然只执行 `deploy.sh update` 即可。
 
 如果需要完整安装或重建系统配置，再执行：
 
 ```bash
 cd /opt/protein_space
 git pull --ff-only origin main
-sudo bash scripts/install-host.sh
+sudo bash scripts/deploy.sh install
 sudo systemctl restart protein-agent protein-api
 sudo systemctl reload nginx
 ```
@@ -290,7 +290,7 @@ IP 白名单命中后可以免登录和免 `X-API-Key`。白名单支持单 IP �
 node --check frontend/app.js
 node --test frontend/app.test.cjs
 node --check frontend/auth.js
-bash -n scripts/install-host.sh
+bash -n scripts/deploy.sh
 ```
 
 API Key、数据库密码和 `APP_ENCRYPTION_KEY` 不要提交到 Git。之前暴露过的模型 Key 应立即撤销并重新生成。
@@ -304,7 +304,7 @@ Agent 只有在 `AGENT_UPSTREAM_URL` 和 `AGENT_API_KEY` 配置正确时才会�
 - [微信小程序运行说明](wechat-miniprogram/README.md)：微信开发者工具导入，配置自己的 AppID 和 request 合法域名，iPhone 微信扫码预览。
 - [iPhone App 运行说明](ios-app/README.md)：Xcode 打开原生工程，配置开发 Team 后安装到 iPhone。
 
-两端默认连接 `https://www.linpro.top`，当前免登录模式下无需填写 Key，不需要新增后端服务。已有服务器更新后执行 `sudo bash scripts/set-chat-auth.sh off` 生效；访客聊天只保留当前会话，详见部署说明。
+两端默认连接 `https://www.linpro.top`，当前免登录模式下无需填写 Key，不需要新增后端服务。已有服务器更新后执行 `sudo bash scripts/deploy.sh auth off` 生效；访客聊天只保留当前会话，详见部署说明。
 
 ### WAF 规则文档生成
 

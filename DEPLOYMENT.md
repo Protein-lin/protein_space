@@ -1,15 +1,27 @@
 # 安装、更新与上传服务器
 
+统一入口：`scripts/deploy.sh`。旧的 `install-*.sh`、`update-*.sh` 和 `set-chat-auth.sh` 已合并，自动化任务也需改用下面的命令。内部辅助脚本位于 `scripts/lib/`。
+
+首次从旧脚本升级（新版本已推送后，在服务器 Git 检出目录执行）：
+
+```bash
+cd /opt/protein_space
+git pull --ff-only origin main
+sudo bash scripts/deploy.sh update
+```
+
+后续可用 `sudo bash scripts/deploy.sh update --pull` 一步拉取并更新。若已手动 `git pull` 或上传源码，执行 `sudo bash scripts/deploy.sh update` 即可。这会更新 Agent、API、前端及 Nginx；更新完成后访问 `/waf-rules.html`。
+
 服务器：Ubuntu 24.04 / Debian（Go 1.22+、systemd）。公网入口为 Nginx，API 和 Agent 新安装时只监听 127.0.0.1。微信和 iOS 共用此后端，不需要新增公网服务。
 
 ## 从本机上传并安装
 
 ```bash
-bash scripts/deploy.sh root@服务器IP install
+bash scripts/deploy.sh remote root@服务器IP install
 # 使用 SSH 配置里的别名（包括非标准端口）
-bash scripts/deploy.sh my-server update
+bash scripts/deploy.sh remote my-server update
 # 自定义目录与域名
-REMOTE_DIR=/opt/protein_space DOMAIN=chat.example.com bash scripts/deploy.sh my-server install
+REMOTE_DIR=/opt/protein_space DOMAIN=chat.example.com bash scripts/deploy.sh remote my-server install
 ```
 
 需要配置 SSH 密钥认证和可信的 known_hosts；非 root 用户需要免密 sudo。脚本会打包当前工作区源码（包含本地修复），通过 SSH/SCP 上传，备份服务器源码，再执行安装或更新。无需先推送 GitHub。不会上传 `.env`、Git、私有小程序配置、构建产物、无关笔记或私有 `relay/proxy.py`。
@@ -30,11 +42,11 @@ REMOTE_DIR=/opt/protein_space DOMAIN=chat.example.com bash scripts/deploy.sh my-
 
 ```bash
 cd /opt/protein_space
-sudo bash scripts/install-host.sh
-sudo bash scripts/update-host.sh
+sudo bash scripts/deploy.sh install
+sudo bash scripts/deploy.sh update
 ```
 
-更新默认使用当前目录源码，适合上传包部署。Git 部署可使用 `sudo PULL=1 bash scripts/update-host.sh`，只允许干净工作区进行 fast-forward 拉取；`BRANCH` 默认为 main。
+更新默认使用当前目录源码，适合上传包部署。Git 部署可使用 `sudo bash scripts/deploy.sh update --pull`，只允许干净工作区进行 fast-forward 拉取；`BRANCH` 默认为 main。
 
 安装和更新会先完成 Go 测试、静态检查及编译；二进制通过原子替换激活，单个服务重启或健康检查失败时恢复其上一版二进制。安装过程不是数据库事务，多个组件失败时可能部分完成；查明原因后可重新运行。源码备份位于 backups，数据库持久卷和已有环境文件不会删除或重置。
 
@@ -42,16 +54,16 @@ sudo bash scripts/update-host.sh
 
 | 目录 | 安装 | 更新 | 行为 |
 | --- | --- | --- | --- |
-| api | `sudo bash scripts/install-api.sh` | `sudo bash scripts/update-api.sh` | 测试、编译、systemd 与健康检查 |
-| agent | `sudo bash scripts/install-agent.sh` | `sudo bash scripts/update-agent.sh` | 测试、编译、systemd 与健康检查 |
-| frontend | `sudo bash scripts/install-frontend.sh` | `sudo bash scripts/update-frontend.sh` | 发布当前静态页面，应用 Nginx 配置 |
-| nginx | `sudo bash scripts/install-nginx.sh` | `sudo bash scripts/update-nginx.sh` | 生成站点、校验、reload，失败恢复旧配置 |
-| mysql | `sudo bash scripts/install-mysql.sh` | `sudo bash scripts/update-mysql.sh` | 启动现有 Compose 数据库并检查连接；不删除卷、不强制拉新镜像、不重建表 |
-| relay | `sudo bash scripts/install-relay.sh` | `sudo bash scripts/update-relay.sh` | 仅内网中转机，须事先配置该机私有 proxy.py；不包含在全站安装中 |
-| ios-app | `bash scripts/install-ios-app.sh` | `bash scripts/update-ios-app.sh` | macOS 上测试并构建模拟器 App；`SIMULATOR_ID` 可指定模拟器安装目标；真机需签名 |
-| wechat-miniprogram | `bash scripts/install-wechat-miniprogram.sh` | `bash scripts/update-wechat-miniprogram.sh` | 运行测试、打开开发者工具；可指定 `WECHAT_CLI`，`CHECK_ONLY=1` 仅测试 |
+| api | `sudo bash scripts/deploy.sh install api` | `sudo bash scripts/deploy.sh update api` | 测试、编译、systemd 与健康检查 |
+| agent | `sudo bash scripts/deploy.sh install agent` | `sudo bash scripts/deploy.sh update agent` | 测试、编译、systemd 与健康检查 |
+| frontend | `sudo bash scripts/deploy.sh install frontend` | `sudo bash scripts/deploy.sh update frontend` | 发布当前静态页面，应用 Nginx 配置 |
+| nginx | `sudo bash scripts/deploy.sh install nginx` | `sudo bash scripts/deploy.sh update nginx` | 生成站点、校验、reload，失败恢复旧配置 |
+| mysql | `sudo bash scripts/deploy.sh install mysql` | `sudo bash scripts/deploy.sh update mysql` | 启动现有 Compose 数据库并检查连接；不删除卷、不强制拉新镜像、不重建表 |
+| relay | `sudo bash scripts/deploy.sh install relay` | `sudo bash scripts/deploy.sh update relay` | 仅内网中转机，须事先配置该机私有 proxy.py；不包含在全站安装中 |
+| ios-app | `bash scripts/deploy.sh install ios-app` | `bash scripts/deploy.sh update ios-app` | macOS 上测试并构建模拟器 App；`SIMULATOR_ID` 可指定模拟器安装目标；真机需签名 |
+| wechat-miniprogram | `bash scripts/deploy.sh install wechat-miniprogram` | `bash scripts/deploy.sh update wechat-miniprogram` | 运行测试、打开开发者工具；可指定 `WECHAT_CLI`，`CHECK_ONLY=1` 仅测试 |
 
-除显式指定 `PULL=1` 的服务器更新外，各项目入口均使用当前源码，不自动拉代码。API 单独安装需先配置数据库和 Agent。iOS 脚本不安装 Xcode，微信脚本不代替 AppID、域名配置和发布审核。
+除显式指定 `--pull`（或 `PULL=1`）的服务器更新外，各项目入口均使用当前源码，不自动拉代码。API 单独安装需先配置数据库和 Agent。iOS 脚本不安装 Xcode，微信脚本不代替 AppID、域名配置和发布审核。
 
 ## Nginx 接口
 
@@ -71,11 +83,12 @@ GET/POST/DELETE /api/auth/whitelist
 GET/DELETE /api/conversations
 GET       /api/conversations/messages
 POST      /api/chat/stream
+POST      /api/waf-rules/generate
 ```
 
 认证和权限检查由 API 执行。当前默认 `AUTH_REQUIRED=false` 允许访客读取模型和聊天；账号配置和管理接口仍需原有认证。Nginx 不改变权限。Agent 的 `/v1/` 为内部接口，公网返回 404。聊天关闭响应缓冲、缓存和压缩，读写超时 1 小时，上传限制 24MB。
 
-检测到 `/etc/letsencrypt/live/$DOMAIN/` 证书时启用 HTTPS，HTTP 重定向 HTTPS；没有证书时只启用 HTTP，并不会自动申请证书。移动端要求有效 HTTPS，申请证书后执行 `sudo bash scripts/update-nginx.sh`。其他站点配置不会自动删除；若其他配置已声明相同域名，应先处理重复站点。
+检测到 `/etc/letsencrypt/live/$DOMAIN/` 证书时启用 HTTPS，HTTP 重定向 HTTPS；没有证书时只启用 HTTP，并不会自动申请证书。移动端要求有效 HTTPS，申请证书后执行 `sudo bash scripts/deploy.sh update nginx`。其他站点配置不会自动删除；若其他配置已声明相同域名，应先处理重复站点。
 
 ## 验证
 
@@ -100,9 +113,9 @@ python3 -m unittest discover -s scripts/tests -p 'test_*.py'
 ```bash
 cd /opt/protein_space
 git pull --ff-only origin main
-sudo bash scripts/update-host.sh
-sudo bash scripts/set-chat-auth.sh off
+sudo bash scripts/deploy.sh update
+sudo bash scripts/deploy.sh auth off
 curl --fail https://www.linpro.top/api/models
 ```
 
-新安装默认关闭聊天认证。既有 api.env 的 AUTH_REQUIRED 值会保留，因此需显式执行 off；恢复时执行 `sudo bash scripts/set-chat-auth.sh on`。免登录模式向所有能访问站点的用户开放模型调用，访客只保留当前会话，不共享管理员身份或账号历史。有效登录/API Key 的历史功能保持不变。微信后台的 request 合法域名也需配置为 `https://www.linpro.top`。
+新安装默认关闭聊天认证。既有 api.env 的 AUTH_REQUIRED 值会保留，因此需显式执行 off；恢复时执行 `sudo bash scripts/deploy.sh auth on`。免登录模式向所有能访问站点的用户开放模型调用，访客只保留当前会话，不共享管理员身份或账号历史。有效登录/API Key 的历史功能保持不变。微信后台的 request 合法域名也需配置为 `https://www.linpro.top`。

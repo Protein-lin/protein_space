@@ -4,8 +4,8 @@ import argparse
 from pathlib import Path
 import tarfile
 
-ROOT = Path(__file__).resolve().parent.parent
-TOP = {"README.md", "DEPLOYMENT.md", "go.mod", "docker-compose.yml"}
+ROOT = Path(__file__).resolve().parents[2]
+TOP = {"README.md", "DEPLOYMENT.md", "go.mod", "docker-compose.yml", "api/waf_rules_prompt.txt"}
 DIRS = {"api", "agent", "frontend", "nginx", "mysql", "scripts", "ios-app", "wechat-miniprogram"}
 SKIP = {"build", "DerivedData", "xcuserdata", "__pycache__", "node_modules", "bin", "backups"}
 SUFFIXES = {".go", ".mod", ".sum", ".js", ".cjs", ".css", ".html", ".svg", ".json", ".wxss", ".wxml", ".sql", ".sh", ".py", ".conf", ".md", ".swift", ".pbxproj", ".xcscheme"}
