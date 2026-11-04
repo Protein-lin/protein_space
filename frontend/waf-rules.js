@@ -38,7 +38,7 @@
       const options=(payload.models||[]).filter(m=>typeof m.id==='string'&&m.id);
       $('model').replaceChildren(...options.map(m=>new Option(m.name||m.id,m.id)));
       modelCount=options.length;
-      if(options.some(m=>m.id===payload.default)) $('model').value=payload.default;
+      $('model').value=ModelPreference.choose(options,payload.default);
       if(!controller){busy(false);status(modelCount?'模型已连接，可以开始生成':'暂无可用模型，请配置 Agent 服务');}
     } catch(error) { modelCount=0;$('model').replaceChildren(new Option('模型不可用',''));if(!controller){busy(false);status(error.message,true);} }
   }
@@ -49,6 +49,7 @@
     data=null;$('output').classList.add('hidden');$('jsonEditor').value='';
     controller=new AbortController();busy(true);status('Agent 正在分析并生成规则…');
     try {
+      ModelPreference.remember($('model').value);
       const response=await fetch('/api/waf-rules/generate',{method:'POST',headers:{'Content-Type':'application/json'},signal:controller.signal,body:JSON.stringify({input:$('evidence').value,context:$('deploymentContext').value,model:$('model').value,provider_config_id:Number($('provider').value)})});
       const text=await core.readStream(response,value=>{$('jsonEditor').value=value;});
       const result=core.parse(text);render(result);$('jsonEditor').value=JSON.stringify(result,null,2);

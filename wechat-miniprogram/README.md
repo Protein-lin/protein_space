@@ -16,7 +16,7 @@
 - `GET /api/models`：读取当前账户可用模型。
 - `POST /api/chat/stream`：发送 `conversation_id`、`model`、完整文字消息上下文；处理 `delta`、`content`、`error` 和 `[DONE]`。
 - `GET /api/conversations` 与 `GET /api/conversations/messages?id=…`：读取当前账户的服务器历史。
-- 所有请求使用 `X-API-Key`；更换地址或 Key 后，点击连接服务会清空当前对话，避免混用账号上下文。
+- 填写个人 Key 时请求携带 `X-API-Key`，留空时不发送该请求头；更换地址或 Key 后，点击连接服务会清空当前对话，避免混用账号上下文。
 - 停止、超时或断线时保留已显示的部分回复，并提示回复可能不完整；部分回复是否落库取决于现有后端。历史记录依赖服务器 MySQL 和有效身份。
 - 当前版本为文字聊天，不含微信授权登录、图片/文件上传、语音和 Markdown 富文本渲染。
 
@@ -33,7 +33,23 @@ node --check wechat-miniprogram/pages/chat/chat.js
 
 ## 一键检查/打开
 
-执行 `bash scripts/deploy.sh install wechat-miniprogram` 或 `bash scripts/deploy.sh update wechat-miniprogram`，先运行测试再打开微信开发者工具。可设置 `WECHAT_CLI` 指定工具路径，`CHECK_ONLY=1` 仅测试。服务器部署共用后端，详见 [部署说明](../DEPLOYMENT.md)。
+从仓库根目录执行（不要在 `wechat-miniprogram/` 子目录执行）：
+
+```bash
+git pull --ff-only origin main
+bash scripts/deploy.sh update wechat-miniprogram
+
+# 只执行本地检查，不打开开发者工具
+CHECK_ONLY=1 bash scripts/deploy.sh update wechat-miniprogram
+
+# 自定义 CLI 路径；有空格时使用引号
+WECHAT_CLI="/Applications/wechatwebdevtools.app/Contents/MacOS/cli" \
+  bash scripts/deploy.sh update wechat-miniprogram
+```
+
+`install wechat-miniprogram` 与 `update wechat-miniprogram` 行为相同：运行工具函数及页面测试、语法检查，再打开开发者工具；不自动拉代码、更新后端、上传或发布。`CHECK_ONLY` 默认 0，设为 1 时仅测试；`WECHAT_CLI` 默认 `/Applications/wechatwebdevtools.app/Contents/MacOS/cli`。需要 Node.js 18+，脚本不支持 `--pull`。
+
+AppID、基础库、域名、Key、模型、超时与可选线上联调参数的完整说明见 [主 README：微信小程序更新和参数](../README.md#5-微信小程序更新和参数)。个人 Key 创建参数见 [API 请求与认证参数](../README.md#6-api-请求与认证参数)。服务器部署共用后端，详见 [部署说明](../DEPLOYMENT.md)。
 
 ## 临时免登录模式
 

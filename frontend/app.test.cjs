@@ -56,6 +56,7 @@ function setup(){
     confirm:()=>true,alert:message=>alerts.push(message),
     fetch:async(...args)=>{calls.push(args);return {ok:true,status:204}}
   });
+  vm.runInContext(fs.readFileSync(__dirname+'/model-preference.js','utf8'),context);
   vm.runInContext(fs.readFileSync(__dirname+'/app.js','utf8'),context);
   const state=vm.runInContext('state',context);
   state.models=[{id:'model'}];
