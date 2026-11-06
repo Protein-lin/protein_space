@@ -344,3 +344,17 @@ bash -n scripts/deploy.sh
 其他客户端参数：`BUILD_DIR` 默认 `ios-app/build`，用于 iOS 测试和构建输出；`SIMULATOR_ID` 可选，用于构建后安装到指定模拟器。完整 Xcode、真机签名等见 [iOS 说明](ios-app/README.md)。relay 需预先在内网机器配置私有 `relay/proxy.py`，不在全站更新或远程部署包内。
 
 目录：`frontend/` 网页，`api/` API 服务，`agent/` 模型代理，`mysql/init/` 初始表结构，`nginx/` 代理配置，`scripts/lib/` 部署内部实现，`wechat-miniprogram/` 微信客户端，`ios-app/` 原生 iOS 客户端。
+
+## WAF 检索、类型目录与人工修订
+
+工作台自动识别 HTTP 请求、访问日志、curl、Python/YAML 等 PoC、漏洞名称、CVE 或混合输入，不需要手选模式。输入统一发送到 `/api/waf-rules/generate`，后端通过当前选定模型及 Provider 连续调用 Agent 两次：先分析输入与 PoC 特征，再结合原文、内置目录和当前账号修订经验生成统一表格。两次请求沿用模型权限与 Provider 授权检查；第一阶段失败时不会继续生成。耗时和模型用量相应增加，页面停止按钮会取消整个请求。
+
+不需要独立搜索 API，也不再使用 `WAF_SEARCH_URL`/`WAF_SEARCH_KEY`。当前 Agent 代理没有联网工具，因此名称/CVE 分析来自模型已有知识，并非实时查询。仅有名称时生成的草案必须标注“模型知识推断，未联网验证”，示意请求不等同于已获取的真实 PoC；证据不足时返回空规则并提示补充产品版本或请求样本。实际联网检索需要上游 Agent 自身具备相应能力，当前代码不会假装已经联网。
+
+42 个计分类别由用户提供的 `rule_score_type.csv` 导入 `api/waf_score_types.json`，编译嵌入后端并通过 `GET /api/waf-rules/catalog` 提供。保留原 ID、name、describe、attack_name、general_score、strict_score；CSV 未提供规则设置分数，设置分数仍为 Agent 建议。前端按目录统一类型及阈值，类型下拉显示编码和中文攻击名。
+
+生成后可以直接修改表格中的名称、CVE、类型、payload、ackey、说明、正则、区域和设置分数，失焦后应用并同步导出数据。阶段等其他字段仍可通过 JSON 编辑器修改。「保存复核并用于后续生成」保存原稿与修订稿；同一草案再次保存会更新已有经验。「管理修订经验」可以查看名称并删除。
+
+修订需要登录身份和 MySQL，首次访问修订接口自动创建 `waf_review_examples` 表（数据库账号需 CREATE 权限），按 user_id 隔离；白名单访问沿用现有 root 身份。生成读取当前账号最近 5 个样例，总计最多 64 KB，作为提示上下文参考，不是模型微调，也不保证准确率提升。目录映射优先于样例。修订接口为 `GET/POST/DELETE /api/waf-rules/reviews`；当前界面最多列出最近 30 条。
+
+此功能涉及后端及前端，更新用 `sudo bash scripts/deploy.sh update`；修改内置类型目录后需重新编译 API。两阶段分析与真实模型的线上效果需要部署后联调。

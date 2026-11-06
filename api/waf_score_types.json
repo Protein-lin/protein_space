@@ -1,0 +1,338 @@
+[
+  {
+    "id": 1,
+    "name": "$EVADE",
+    "describe": "",
+    "general_score": 16,
+    "strict_score": 16,
+    "attack_name": "特殊攻击"
+  },
+  {
+    "id": 2,
+    "name": "$RFA_YD",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "敏感文件访问"
+  },
+  {
+    "id": 3,
+    "name": "$SHELL_3001",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "Webshell探测"
+  },
+  {
+    "id": 4,
+    "name": "$WEBSHELL",
+    "describe": "",
+    "general_score": 15,
+    "strict_score": 12,
+    "attack_name": "Webshell探测"
+  },
+  {
+    "id": 5,
+    "name": "$XSS_YD",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "跨站脚本"
+  },
+  {
+    "id": 6,
+    "name": "$DZC_2409",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "跨站脚本"
+  },
+  {
+    "id": 7,
+    "name": "$DZC_2408",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "跨站脚本"
+  },
+  {
+    "id": 8,
+    "name": "$NGX_PARSE_YD",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "特殊攻击"
+  },
+  {
+    "id": 9,
+    "name": "$DZC_2403",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "跨站脚本"
+  },
+  {
+    "id": 10,
+    "name": "$DZC_2402",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "SQL注入"
+  },
+  {
+    "id": 11,
+    "name": "$DZC_2401",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "代码执行"
+  },
+  {
+    "id": 12,
+    "name": "$DZC_2407",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "跨站脚本"
+  },
+  {
+    "id": 13,
+    "name": "$DZC_2406",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "跨站脚本"
+  },
+  {
+    "id": 14,
+    "name": "$DZC_2405",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "SQL注入"
+  },
+  {
+    "id": 15,
+    "name": "$DZC_2404",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "跨站脚本"
+  },
+  {
+    "id": 16,
+    "name": "$WEBSHELL_YD",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "Webshell探测"
+  },
+  {
+    "id": 17,
+    "name": "$UPLOAD_YD",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "文件上传"
+  },
+  {
+    "id": 18,
+    "name": "$RFE",
+    "describe": "",
+    "general_score": 13,
+    "strict_score": 12,
+    "attack_name": "代码执行"
+  },
+  {
+    "id": 19,
+    "name": "$UPLOAD",
+    "describe": "",
+    "general_score": 13,
+    "strict_score": 12,
+    "attack_name": "文件上传"
+  },
+  {
+    "id": 20,
+    "name": "$RFI",
+    "describe": "",
+    "general_score": 27,
+    "strict_score": 12,
+    "attack_name": "敏感文件访问"
+  },
+  {
+    "id": 21,
+    "name": "$NGINX_2972",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "特殊攻击"
+  },
+  {
+    "id": 22,
+    "name": "$NGINX_2973",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "特殊攻击"
+  },
+  {
+    "id": 23,
+    "name": "$NGINX_2971",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "特殊攻击"
+  },
+  {
+    "id": 24,
+    "name": "$MIIS_YD",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "特殊攻击"
+  },
+  {
+    "id": 25,
+    "name": "$SSJI_SQL_YD",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "SQL注入"
+  },
+  {
+    "id": 26,
+    "name": "$SQL",
+    "describe": "",
+    "general_score": 20,
+    "strict_score": 12,
+    "attack_name": "SQL注入"
+  },
+  {
+    "id": 28,
+    "name": "$TRAVERSAL",
+    "describe": "",
+    "general_score": 20,
+    "strict_score": 16,
+    "attack_name": "恶意扫描"
+  },
+  {
+    "id": 29,
+    "name": "$SQL_YD",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "SQL注入"
+  },
+  {
+    "id": 30,
+    "name": "$DZC_2410",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "跨站脚本"
+  },
+  {
+    "id": 31,
+    "name": "$DZC_2411",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "SQL注入"
+  },
+  {
+    "id": 32,
+    "name": "$DZC_2412",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "SQL注入"
+  },
+  {
+    "id": 33,
+    "name": "$DZC_2413",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "SQL注入"
+  },
+  {
+    "id": 34,
+    "name": "$APACHE_PARSE_YD",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "特殊攻击"
+  },
+  {
+    "id": 35,
+    "name": "$PHP_CGI_YD",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "代码执行"
+  },
+  {
+    "id": 36,
+    "name": "$XSS",
+    "describe": "",
+    "general_score": 20,
+    "strict_score": 12,
+    "attack_name": "跨站脚本"
+  },
+  {
+    "id": 37,
+    "name": "$PHP_RFA_YD",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "敏感文件访问"
+  },
+  {
+    "id": 38,
+    "name": "$DedeCms_2501",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "Webshell探测"
+  },
+  {
+    "id": 39,
+    "name": "$DedeCms_2502",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "Webshell探测"
+  },
+  {
+    "id": 40,
+    "name": "$DedeCms_2701",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "代码执行"
+  },
+  {
+    "id": 41,
+    "name": "$DedeCms_2702",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "代码执行"
+  },
+  {
+    "id": 42,
+    "name": "$PhpCms_2073",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "代码执行"
+  },
+  {
+    "id": 43,
+    "name": "$jieqiCMS_2961",
+    "describe": "",
+    "general_score": 12,
+    "strict_score": 12,
+    "attack_name": "特殊攻击"
+  }
+]

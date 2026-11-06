@@ -34,12 +34,14 @@ func TestWafRulesGuestRoute(t *testing.T) {
 
 func TestWafRulesForwardsTrustedTask(t *testing.T) {
 	var received ChatRequest
+	calls := 0
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/v1/models" {
 			w.Header().Set("Content-Type", "application/json")
 			w.Write([]byte(`{"models":[{"id":"test"}],"default":"test"}`))
 			return
 		}
+		calls++
 		if err := json.NewDecoder(r.Body).Decode(&received); err != nil {
 			t.Error(err)
 		}
@@ -53,6 +55,9 @@ func TestWafRulesForwardsTrustedTask(t *testing.T) {
 	if w.Code != 200 {
 		t.Fatalf("%d %s", w.Code, w.Body.String())
 	}
+	if calls != 2 {
+		t.Fatalf("expected two Agent requests, got %d", calls)
+	}
 	if received.Task != "waf_rules" || len(received.Messages) != 2 || received.Messages[0].Role != "system" {
 		t.Fatalf("invalid forwarded task: %+v", received)
 	}
@@ -61,10 +66,29 @@ func TestWafRulesForwardsTrustedTask(t *testing.T) {
 	}
 	var prompt string
 	json.Unmarshal(received.Messages[0].Content, &prompt)
-	if prompt != wafRulesPrompt {
+	if !strings.HasPrefix(prompt, wafRulesPrompt) {
 		t.Fatal("trusted prompt was replaced")
 	}
 	if !strings.Contains(w.Body.String(), "[DONE]") {
 		t.Fatal("stream was not forwarded")
+	}
+}
+
+func TestWafAnalysisErrorStopsGeneration(t *testing.T) {
+	calls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/models" {
+			w.Write([]byte(`{"models":[{"id":"test"}]}`))
+			return
+		}
+		calls++
+		w.Write([]byte("data: {\"error\":\"upstream unavailable\"}\n\ndata: [DONE]\n\n"))
+	}))
+	defer server.Close()
+	a := &app{agentURL: server.URL}
+	w := httptest.NewRecorder()
+	a.wafRules(w, httptest.NewRequest("POST", "/api/waf-rules/generate", strings.NewReader(`{"input":"CVE-2024-0000","model":"test"}`)))
+	if w.Code != 502 || calls != 1 {
+		t.Fatalf("status=%d calls=%d", w.Code, calls)
 	}
 }
